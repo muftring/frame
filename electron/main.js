@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const path = require('path')
 const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
+const toolLauncher = require('./services/toolLauncher')
 
 const isDev = !app.isPackaged
 
@@ -17,6 +18,16 @@ ipcMain.handle('img:thumbnail', (_, filePath, size) => imageProcessor.thumbnail(
 ipcMain.handle('img:rotate', (_, filePath, degrees, outputPath) => imageProcessor.rotate(filePath, degrees, outputPath))
 ipcMain.handle('img:crop', (_, filePath, region, outputPath) => imageProcessor.crop(filePath, region, outputPath))
 ipcMain.handle('img:getMetadata', (_, filePath) => imageProcessor.getMetadata(filePath))
+
+ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
+ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
+ipcMain.handle('tools:openFolder', (_, toolPath, folderPath) => toolLauncher.openFolder(toolPath, folderPath))
+ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolder, presetPath) =>
+  toolLauncher.runBatchExport(toolPath, inputPaths, outputFolder, presetPath, event.sender))
+ipcMain.handle('tools:revealInFinder', (_, filePath) => {
+  shell.showItemInFolder(filePath)
+  return { success: true }
+})
 
 function createWindow() {
   const win = new BrowserWindow({
