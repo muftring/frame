@@ -8,6 +8,7 @@
     "build": "vite build && electron-builder"
   },
   "dependencies": {
+    "electron-store": "^11.0.2",
     "sharp": "^0.33.5",
     "vue": "^3.5.13"
   },

@@ -70,6 +70,52 @@ ipcMain.handle('app:getTempDir', () => {
   return path.join(app.getPath('home'), '.frame', 'temp')
 })
 
+ipcMain.handle('dialog:openPreset', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'RawTherapee Presets', extensions: ['pp3'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('shell:openExternal', (_, extUrl) => {
+  shell.openExternal(extUrl)
+  return { success: true }
+})
+
+ipcMain.handle('shell:openPath', (_, filePath) => {
+  shell.openPath(filePath)
+  return { success: true }
+})
+
+let _store = null
+async function getStore() {
+  if (!_store) {
+    const { default: Store } = await import('electron-store')
+    _store = new Store({ name: 'frame-settings' })
+  }
+  return _store
+}
+
+ipcMain.handle('store:get', async (_, key) => {
+  try {
+    const store = await getStore()
+    return store.get(key)
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('store:set', async (_, key, value) => {
+  try {
+    const store = await getStore()
+    store.set(key, value)
+  } catch {
+    // ignore store errors
+  }
+})
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,

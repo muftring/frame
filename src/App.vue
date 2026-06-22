@@ -54,6 +54,7 @@
       <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
       <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" @update-state="galleryState = $event" />
       <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
+      <ProcessModule v-else-if="currentModule === 'process'" />
       <div v-else class="module-placeholder">
         <span class="module-name">{{ activeLabel }}</span>
       </div>
@@ -66,10 +67,11 @@ import TriageModule from './modules/Triage/TriageModule.vue'
 import SorterModule from './modules/Sorter/SorterModule.vue'
 import GalleryModule from './modules/Gallery/GalleryModule.vue'
 import EditorModule from './modules/Editor/EditorModule.vue'
+import ProcessModule from './modules/Process/ProcessModule.vue'
 
 export default {
   name: 'App',
-  components: { TriageModule, SorterModule, GalleryModule, EditorModule },
+  components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule },
   data() {
     return {
       sidebarOpen: false,
