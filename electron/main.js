@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const path = require('path')
 const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
@@ -27,6 +27,12 @@ ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolde
 ipcMain.handle('tools:revealInFinder', (_, filePath) => {
   shell.showItemInFolder(filePath)
   return { success: true }
+})
+
+ipcMain.handle('dialog:openFolder', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+  if (result.canceled) return null
+  return result.filePaths[0]
 })
 
 function createWindow() {

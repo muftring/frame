@@ -50,7 +50,8 @@
       </div>
     </nav>
     <main class="content">
-      <div class="module-placeholder">
+      <TriageModule v-if="currentModule === 'triage'" @navigate="handleNavigate" />
+      <div v-else class="module-placeholder">
         <span class="module-name">{{ activeLabel }}</span>
       </div>
     </main>
@@ -58,12 +59,16 @@
 </template>
 
 <script>
+import TriageModule from './modules/Triage/TriageModule.vue'
+
 export default {
   name: 'App',
+  components: { TriageModule },
   data() {
     return {
       sidebarOpen: false,
       currentModule: 'triage',
+      moduleData: null,
       navItems: [
         { id: 'triage', label: 'Triage', icon: 'triage' },
         { id: 'sorter', label: 'Sorter', icon: 'sorter' },
@@ -78,6 +83,12 @@ export default {
       if (this.currentModule === 'settings') return 'Settings'
       const item = this.navItems.find(i => i.id === this.currentModule)
       return item ? item.label : ''
+    }
+  },
+  methods: {
+    handleNavigate(moduleId, data) {
+      this.currentModule = moduleId
+      this.moduleData = data
     }
   }
 }
