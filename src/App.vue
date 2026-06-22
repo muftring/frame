@@ -1,6 +1,7 @@
 <template>
   <div class="app">
     <nav class="sidebar" @mouseenter="sidebarOpen = true" @mouseleave="sidebarOpen = false">
+      <div class="drag-region"></div>
       <div class="nav-items">
         <div
           v-for="item in navItems"
@@ -60,6 +61,14 @@
       </div>
     </main>
     <SettingsPanel v-if="showSettings" :settings="settings" @close="showSettings = false" />
+    <!-- Toast notifications -->
+    <div class="toast-container">
+      <transition-group name="toast">
+        <div v-for="t in toasts" :key="t.id" class="toast" :class="'toast-' + t.type">
+          {{ t.message }}
+        </div>
+      </transition-group>
+    </div>
   </div>
 </template>
 
@@ -76,7 +85,8 @@ export default {
   components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule, SettingsPanel },
   provide() {
     return {
-      appSettings: this.settings
+      appSettings: this.settings,
+      toast: this.addToast
     }
   },
   data() {
@@ -87,6 +97,7 @@ export default {
       galleryState: null,
       showSettings: false,
       settingsReady: false,
+      toasts: [],
       settings: {
         darktablePath: null,
         rawtherapeePath: null,
@@ -123,6 +134,10 @@ export default {
     const saved = await window.api.invoke('store:get', 'frameSettings')
     if (saved) Object.assign(this.settings, saved)
     this.settingsReady = true
+    window.addEventListener('keydown', this.handleGlobalKey)
+  },
+  beforeUnmount() {
+    window.removeEventListener('keydown', this.handleGlobalKey)
   },
   methods: {
     selectModule(id) {
@@ -134,6 +149,27 @@ export default {
       this.currentModule = moduleId
       this.moduleData = data
       this.showSettings = false
+    },
+    addToast(message, type = 'info') {
+      const id = Date.now() + Math.random()
+      this.toasts.push({ id, message, type })
+      setTimeout(() => {
+        this.toasts = this.toasts.filter(t => t.id !== id)
+      }, 3000)
+    },
+    handleGlobalKey(e) {
+      if (e.metaKey || e.ctrlKey) {
+        const moduleKeys = { '1': 'triage', '2': 'sorter', '3': 'gallery', '4': 'editor', '5': 'process' }
+        if (moduleKeys[e.key]) {
+          e.preventDefault()
+          this.selectModule(moduleKeys[e.key])
+          return
+        }
+        if (e.key === ',') {
+          e.preventDefault()
+          this.showSettings = !this.showSettings
+        }
+      }
     }
   }
 }
@@ -168,6 +204,7 @@ body {
 .app {
   display: flex;
   height: 100vh;
+  position: relative;
 }
 
 .sidebar {
@@ -189,10 +226,15 @@ body {
   min-width: var(--sidebar-expanded);
 }
 
+.drag-region {
+  height: 40px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+
 .nav-items {
   display: flex;
   flex-direction: column;
-  padding-top: 8px;
 }
 
 .nav-item {
@@ -205,6 +247,7 @@ body {
   border-left: 3px solid transparent;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
+  -webkit-app-region: no-drag;
 }
 
 .nav-item:hover {
@@ -261,5 +304,112 @@ body {
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--accent);
+}
+
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  left: 76px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  max-width: 380px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.toast-info {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.toast-error {
+  background: #2a1515;
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  color: #ef5350;
+}
+
+.toast-success {
+  background: #152a15;
+  border: 1px solid rgba(102, 187, 106, 0.3);
+  color: #66bb6a;
+}
+
+.toast-enter-active {
+  transition: all 0.25s ease;
+}
+.toast-leave-active {
+  transition: all 0.2s ease;
+}
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+/* Global spinner */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Global empty state */
+.empty-state-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1;
+  height: 100%;
+}
+
+.empty-state-full svg {
+  width: 48px;
+  height: 48px;
+  color: var(--text2);
+  opacity: 0.3;
+}
+
+.empty-state-full .empty-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.empty-state-full .empty-hint {
+  font-size: 13px;
+  color: var(--text2);
+}
+
+/* Skeleton animation for loading placeholders */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface2) 25%, #363636 50%, var(--surface2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  to { background-position: -200% 0; }
 }
 </style>

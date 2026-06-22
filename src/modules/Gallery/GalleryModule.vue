@@ -6,10 +6,20 @@
       <span v-if="images.length" class="image-count">{{ images.length }} images</span>
     </div>
 
-    <div v-if="!images.length && !loading" class="empty-state">
-      Open a folder to browse images
+    <div v-if="!images.length && !loading" class="empty-state-full">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="28" y="4" width="16" height="16" rx="2" />
+        <rect x="4" y="28" width="16" height="16" rx="2" />
+        <rect x="28" y="28" width="16" height="16" rx="2" />
+      </svg>
+      <div class="empty-title">No folder selected</div>
+      <div class="empty-hint">Open a folder to browse your photos</div>
     </div>
-    <div v-if="loading" class="empty-state">Loading images...</div>
+    <div v-if="loading" class="empty-state-full">
+      <div class="spinner"></div>
+      <div class="empty-hint">Loading images...</div>
+    </div>
 
     <div class="grid-wrap" ref="gridWrap" @scroll="saveScrollPos">
       <div class="grid">
@@ -23,7 +33,7 @@
           @contextmenu.prevent="showContextMenu($event, img)"
         >
           <img v-if="img.thumbnail" :src="img.thumbnail" class="grid-thumb" />
-          <div v-else class="grid-placeholder"></div>
+          <div v-else class="grid-placeholder skeleton"></div>
           <div class="grid-label">{{ img.name }}</div>
         </div>
       </div>
@@ -55,6 +65,7 @@ import ImageViewer from './ImageViewer.vue'
 
 export default {
   name: 'GalleryModule',
+  inject: ['toast'],
   components: { ImageViewer },
   props: {
     sessionState: { type: Object, default: null }

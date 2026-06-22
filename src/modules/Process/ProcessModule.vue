@@ -135,6 +135,7 @@
 <script>
 export default {
   name: 'ProcessModule',
+  inject: ['toast'],
   data() {
     return {
       tools: { darktable: null, rawtherapee: null },

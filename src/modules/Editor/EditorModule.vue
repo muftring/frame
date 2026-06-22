@@ -55,8 +55,16 @@
         @mouseup="onMouseUp"
         @mouseleave="onMouseUp"
       ></canvas>
-      <div v-if="!hasImage" class="canvas-empty">
-        Open an image to start editing
+      <div v-if="!hasImage" class="canvas-empty empty-state-full">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 4v8M36 36v8M4 12h8M36 36h8" />
+          <rect x="12" y="12" width="24" height="24" rx="2" />
+        </svg>
+        <div class="empty-title">No image open</div>
+        <div class="empty-hint">Open an image to start editing</div>
+      </div>
+      <div v-if="operating" class="canvas-loading">
+        <div class="spinner"></div>
       </div>
     </div>
 
@@ -77,6 +85,7 @@
 <script>
 export default {
   name: 'EditorModule',
+  inject: ['toast'],
   props: {
     imagePath: { type: String, default: null }
   },
@@ -87,6 +96,7 @@ export default {
       tempDir: null,
       img: null,
       imageWidth: 0,
+      operating: false,
       imageHeight: 0,
       transform: null,
       activePanel: 'rotate',
@@ -194,16 +204,22 @@ export default {
 
     // --- Rotate / flip ---
     async doRotate(degrees) {
+      this.operating = true
       await this.pushUndo()
-      await window.api.invoke('img:rotate', this.workingPath, degrees, this.workingPath)
+      const r = await window.api.invoke('img:rotate', this.workingPath, degrees, this.workingPath)
+      if (r.error) this.toast(r.error, 'error')
       this.cropRect = null
       await this.loadImage()
+      this.operating = false
     },
     async doFlip() {
+      this.operating = true
       await this.pushUndo()
-      await window.api.invoke('img:flip', this.workingPath, 'horizontal', this.workingPath)
+      const r = await window.api.invoke('img:flip', this.workingPath, 'horizontal', this.workingPath)
+      if (r.error) this.toast(r.error, 'error')
       this.cropRect = null
       await this.loadImage()
+      this.operating = false
     },
 
     // --- Crop ---
@@ -570,11 +586,16 @@ export default {
 .canvas-empty {
   position: absolute;
   inset: 0;
+}
+
+.canvas-loading {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text2);
-  font-size: 15px;
+  background: rgba(26, 26, 26, 0.6);
+  z-index: 5;
 }
 
 .modal-overlay {

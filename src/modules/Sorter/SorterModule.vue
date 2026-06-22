@@ -80,11 +80,18 @@
     </div>
 
     <!-- Empty state -->
-    <div class="empty-state" v-if="!images.length && !loading">
-      <span>Open a folder to start sorting</span>
+    <div class="empty-state-full" v-if="!images.length && !loading">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="6" y="10" width="36" height="28" rx="3" />
+        <path d="M6 18h36" />
+        <circle cx="24" cy="31" r="5" />
+      </svg>
+      <div class="empty-title">No images loaded</div>
+      <div class="empty-hint">Open a folder to start sorting photos</div>
     </div>
-    <div class="empty-state" v-if="loading">
-      <span>Loading images...</span>
+    <div class="empty-state-full" v-if="loading">
+      <div class="spinner"></div>
+      <div class="empty-hint">Loading images...</div>
     </div>
 
     <!-- Action bar -->
@@ -112,6 +119,7 @@
 <script>
 export default {
   name: 'SorterModule',
+  inject: ['toast'],
   props: {
     initialFolder: { type: String, default: null }
   },
@@ -229,6 +237,8 @@ export default {
       if (result.success) {
         this.currentImage.status = 'trashed'
         this.currentImage.trashedPath = result.trashedPath
+      } else if (result.error) {
+        this.toast(result.error, 'error')
       }
       this.advanceNext()
     },

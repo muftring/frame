@@ -122,6 +122,7 @@
 <script>
 export default {
   name: 'TriageModule',
+  inject: ['toast', 'appSettings'],
   emits: ['navigate'],
   data() {
     return {
@@ -196,6 +197,11 @@ export default {
       return this.destFolder + '/' + this.copyResults[0].folder
     }
   },
+  mounted() {
+    if (this.appSettings && this.appSettings.defaultGapThreshold) {
+      this.gapThreshold = this.appSettings.defaultGapThreshold
+    }
+  },
   watch: {
     groups() {
       this.loadThumbnails()
@@ -227,7 +233,12 @@ export default {
       this.thumbnails = {}
 
       const files = await window.api.invoke('fs:scanFolder', this.sourceFolder)
-      if (files.error || !files.length) {
+      if (files.error) {
+        this.scanning = false
+        this.toast(files.error, 'error')
+        return
+      }
+      if (!files.length) {
         this.scanning = false
         this.noFilesFound = true
         return

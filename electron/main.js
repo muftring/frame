@@ -171,18 +171,40 @@ ipcMain.handle('store:set', async (_, key, value) => {
   }
 })
 
-function createWindow() {
+async function createWindow() {
+  let bounds = null
+  try {
+    const store = await getStore()
+    bounds = store.get('windowBounds')
+  } catch {}
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: bounds?.width || 1280,
+    height: bounds?.height || 820,
+    x: bounds?.x,
+    y: bounds?.y,
     title: 'Frame',
     backgroundColor: '#1a1a1a',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+
+  let boundsTimer
+  const saveBounds = () => {
+    clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(async () => {
+      try {
+        const store = await getStore()
+        store.set('windowBounds', win.getBounds())
+      } catch {}
+    }, 500)
+  }
+  win.on('resize', saveBounds)
+  win.on('move', saveBounds)
 
   if (isDev) {
     win.loadURL('http://localhost:5173')
@@ -198,7 +220,7 @@ app.whenReady().then(async () => {
   })
   await imageProcessor.ensureCacheDir()
   await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
-  createWindow()
+  await createWindow()
 })
 
 app.on('window-all-closed', () => {
