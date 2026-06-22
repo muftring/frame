@@ -120,10 +120,25 @@ function parseExifBuffer(exifBuf) {
   return result
 }
 
+async function flip(filePath, direction, outputPath) {
+  try {
+    let pipeline = sharp(filePath)
+    if (direction === 'horizontal') pipeline = pipeline.flop()
+    else pipeline = pipeline.flip()
+    const buf = await pipeline.toBuffer()
+    await fs.mkdir(path.dirname(outputPath), { recursive: true })
+    await fs.writeFile(outputPath, buf)
+    return { success: true, outputPath }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+}
+
 module.exports = {
   ensureCacheDir,
   thumbnail,
   rotate,
   crop,
+  flip,
   getMetadata
 }

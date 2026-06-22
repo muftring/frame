@@ -23,6 +23,7 @@ ipcMain.handle('img:thumbnail', (_, filePath, size) => imageProcessor.thumbnail(
 ipcMain.handle('img:rotate', (_, filePath, degrees, outputPath) => imageProcessor.rotate(filePath, degrees, outputPath))
 ipcMain.handle('img:crop', (_, filePath, region, outputPath) => imageProcessor.crop(filePath, region, outputPath))
 ipcMain.handle('img:getMetadata', (_, filePath) => imageProcessor.getMetadata(filePath))
+ipcMain.handle('img:flip', (_, filePath, direction, outputPath) => imageProcessor.flip(filePath, direction, outputPath))
 
 ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
 ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
@@ -38,6 +39,35 @@ ipcMain.handle('dialog:openFolder', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
   if (result.canceled) return null
   return result.filePaths[0]
+})
+
+ipcMain.handle('dialog:openFile', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{
+      name: 'Images',
+      extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'nef', 'cr2', 'arw', 'orf', 'rw2', 'dng']
+    }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('dialog:saveFile', async (_, defaultPath) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath,
+    filters: [
+      { name: 'JPEG', extensions: ['jpg', 'jpeg'] },
+      { name: 'PNG', extensions: ['png'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled) return null
+  return result.filePath
+})
+
+ipcMain.handle('app:getTempDir', () => {
+  return path.join(app.getPath('home'), '.frame', 'temp')
 })
 
 function createWindow() {
@@ -66,6 +96,8 @@ app.whenReady().then(async () => {
     return net.fetch(url.pathToFileURL(filePath).href)
   })
   await imageProcessor.ensureCacheDir()
+  const fs = require('fs/promises')
+  await fs.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
   createWindow()
 })
 
