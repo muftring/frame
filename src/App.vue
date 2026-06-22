@@ -7,7 +7,7 @@
           :key="item.id"
           class="nav-item"
           :class="{ active: currentModule === item.id }"
-          @click="currentModule = item.id"
+          @click="selectModule(item.id)"
         >
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <template v-if="item.icon === 'triage'">
@@ -39,7 +39,7 @@
           </transition>
         </div>
       </div>
-      <div class="nav-item settings" @click="currentModule = 'settings'">
+      <div class="nav-item settings" :class="{ active: showSettings }" @click="showSettings = !showSettings">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
           <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
@@ -59,6 +59,7 @@
         <span class="module-name">{{ activeLabel }}</span>
       </div>
     </main>
+    <SettingsPanel v-if="showSettings" :settings="settings" @close="showSettings = false" />
   </div>
 </template>
 
@@ -68,16 +69,31 @@ import SorterModule from './modules/Sorter/SorterModule.vue'
 import GalleryModule from './modules/Gallery/GalleryModule.vue'
 import EditorModule from './modules/Editor/EditorModule.vue'
 import ProcessModule from './modules/Process/ProcessModule.vue'
+import SettingsPanel from './modules/Settings/SettingsPanel.vue'
 
 export default {
   name: 'App',
-  components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule },
+  components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule, SettingsPanel },
+  provide() {
+    return {
+      appSettings: this.settings
+    }
+  },
   data() {
     return {
       sidebarOpen: false,
       currentModule: 'triage',
       moduleData: null,
       galleryState: null,
+      showSettings: false,
+      settingsReady: false,
+      settings: {
+        darktablePath: null,
+        rawtherapeePath: null,
+        guidePath: null,
+        defaultGapThreshold: 45,
+        thumbnailSize: 180
+      },
       navItems: [
         { id: 'triage', label: 'Triage', icon: 'triage' },
         { id: 'sorter', label: 'Sorter', icon: 'sorter' },
@@ -89,15 +105,35 @@ export default {
   },
   computed: {
     activeLabel() {
-      if (this.currentModule === 'settings') return 'Settings'
       const item = this.navItems.find(i => i.id === this.currentModule)
       return item ? item.label : ''
     }
   },
+  watch: {
+    settings: {
+      deep: true,
+      handler() {
+        if (this.settingsReady) {
+          window.api.invoke('store:set', 'frameSettings', { ...this.settings })
+        }
+      }
+    }
+  },
+  async mounted() {
+    const saved = await window.api.invoke('store:get', 'frameSettings')
+    if (saved) Object.assign(this.settings, saved)
+    this.settingsReady = true
+  },
   methods: {
+    selectModule(id) {
+      this.currentModule = id
+      this.moduleData = null
+      this.showSettings = false
+    },
     handleNavigate(moduleId, data) {
       this.currentModule = moduleId
       this.moduleData = data
+      this.showSettings = false
     }
   }
 }

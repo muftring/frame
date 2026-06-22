@@ -70,6 +70,61 @@ ipcMain.handle('app:getTempDir', () => {
   return path.join(app.getPath('home'), '.frame', 'temp')
 })
 
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion()
+})
+
+const fsNode = require('fs/promises')
+const cacheDir = () => path.join(app.getPath('home'), '.frame', 'thumbcache')
+
+ipcMain.handle('cache:getInfo', async () => {
+  try {
+    const files = await fsNode.readdir(cacheDir())
+    const jpgs = files.filter(f => f.endsWith('.jpg'))
+    let size = 0
+    for (const f of jpgs) {
+      const stat = await fsNode.stat(path.join(cacheDir(), f))
+      size += stat.size
+    }
+    return { count: jpgs.length, size }
+  } catch {
+    return { count: 0, size: 0 }
+  }
+})
+
+ipcMain.handle('cache:clear', async () => {
+  try {
+    const files = await fsNode.readdir(cacheDir())
+    let deleted = 0
+    for (const f of files) {
+      if (f.endsWith('.jpg')) {
+        await fsNode.unlink(path.join(cacheDir(), f))
+        deleted++
+      }
+    }
+    return { deleted }
+  } catch {
+    return { deleted: 0 }
+  }
+})
+
+ipcMain.handle('dialog:openExecutable', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile', 'treatPackageAsDirectory']
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('dialog:openPdf', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
 ipcMain.handle('dialog:openPreset', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -142,8 +197,7 @@ app.whenReady().then(async () => {
     return net.fetch(url.pathToFileURL(filePath).href)
   })
   await imageProcessor.ensureCacheDir()
-  const fs = require('fs/promises')
-  await fs.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
+  await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
   createWindow()
 })
 
