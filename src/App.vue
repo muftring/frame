@@ -51,6 +51,8 @@
     </nav>
     <main class="content">
       <TriageModule v-if="currentModule === 'triage'" @navigate="handleNavigate" />
+      <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
+      <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" @update-state="galleryState = $event" />
       <div v-else class="module-placeholder">
         <span class="module-name">{{ activeLabel }}</span>
       </div>
@@ -60,15 +62,18 @@
 
 <script>
 import TriageModule from './modules/Triage/TriageModule.vue'
+import SorterModule from './modules/Sorter/SorterModule.vue'
+import GalleryModule from './modules/Gallery/GalleryModule.vue'
 
 export default {
   name: 'App',
-  components: { TriageModule },
+  components: { TriageModule, SorterModule, GalleryModule },
   data() {
     return {
       sidebarOpen: false,
       currentModule: 'triage',
       moduleData: null,
+      galleryState: null,
       navItems: [
         { id: 'triage', label: 'Triage', icon: 'triage' },
         { id: 'sorter', label: 'Sorter', icon: 'sorter' },

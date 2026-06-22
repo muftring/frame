@@ -1,10 +1,15 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, dialog, protocol, net } = require('electron')
 const path = require('path')
+const url = require('url')
 const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
 const toolLauncher = require('./services/toolLauncher')
 
 const isDev = !app.isPackaged
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'local-file', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
+])
 
 ipcMain.handle('fs:scanFolder', (_, folderPath) => fileSystem.scanFolder(folderPath))
 ipcMain.handle('fs:readExif', (_, filePath) => fileSystem.readExif(filePath))
@@ -56,6 +61,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  protocol.handle('local-file', (request) => {
+    const filePath = decodeURI(request.url.slice('local-file://'.length))
+    return net.fetch(url.pathToFileURL(filePath).href)
+  })
   await imageProcessor.ensureCacheDir()
   createWindow()
 })
