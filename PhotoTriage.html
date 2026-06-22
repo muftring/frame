@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photo Triage — Group & Copy</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a1a;
+  --surface: #242424;
+  --surface2: #2e2e2e;
+  --surface3: #383838;
+  --border: rgba(255,255,255,0.09);
+  --border2: rgba(255,255,255,0.16);
+  --text: #f0f0f0;
+  --text2: #999;
+  --text3: #555;
+  --accent: #c9a84c;
+  --accent2: rgba(201,168,76,0.12);
+  --accent3: rgba(201,168,76,0.25);
+  --blue: #4a90d9;
+  --blue2: rgba(74,144,217,0.12);
+  --green: #4a9a5a;
+  --green2: rgba(74,154,90,0.15);
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ── */
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.header h1 { font-size: 15px; font-weight: 600; color: var(--accent); }
+.header-sub { font-size: 12px; color: var(--text3); }
+.pipeline {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.pipe-step {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text3);
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.pipe-step.active { color: var(--accent); background: var(--accent2); }
+.pipe-step.done { color: var(--green); }
+.pipe-arrow { color: var(--text3); font-size: 10px; padding: 0 2px; }
+
+/* ── MAIN ── */
+.main { flex: 1; padding: 20px; max-width: 900px; margin: 0 auto; width: 100%; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-header h2 { font-size: 14px; font-weight: 600; }
+.card-header .step-badge {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  background: var(--surface2); color: var(--text2);
+  flex-shrink: 0;
+}
+.card-header .step-badge.active { background: var(--accent); color: #000; }
+.card-header .step-badge.done { background: var(--green); color: #fff; }
+.card-body { padding: 16px 18px; }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 16px; border-radius: var(--radius);
+  border: 1px solid var(--border2); background: transparent;
+  color: var(--text); font-size: 13px; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface2); border-color: rgba(255,255,255,0.28); }
+.btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.btn-accent { border-color: var(--accent); color: var(--accent); }
+.btn-accent:hover { background: var(--accent2); }
+.btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: #d4b060; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* ── FOLDER PICK ROW ── */
+.folder-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.folder-path {
+  flex: 1; min-width: 0;
+  font-size: 12px; color: var(--text2);
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.folder-path.set { color: var(--accent); border-color: rgba(201,168,76,0.3); }
+
+/* ── GAP SLIDER ── */
+.gap-row {
+  display: flex; align-items: center; gap: 14px; margin: 14px 0 6px;
+}
+.gap-row label { font-size: 13px; color: var(--text2); white-space: nowrap; }
+.gap-row input[type=range] { flex: 1; }
+.gap-val {
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  min-width: 70px; text-align: right;
+}
+.gap-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+/* ── SCAN RESULTS ── */
+.scan-summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px; margin-bottom: 16px;
+}
+.summary-card {
+  background: var(--surface2); border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.summary-card .label { font-size: 11px; color: var(--text3); margin-bottom: 3px; }
+.summary-card .value { font-size: 20px; font-weight: 600; }
+.summary-card .value.accent { color: var(--accent); }
+
+/* ── GROUP CARDS ── */
+.groups-list { display: flex; flex-direction: column; gap: 10px; }
+.group-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.group-card-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.group-label {
+  font-size: 13px; font-weight: 600;
+  background: var(--accent); color: #000;
+  border-radius: 4px; padding: 2px 8px;
+}
+.group-meta { font-size: 12px; color: var(--text2); }
+.group-count {
+  margin-left: auto; font-size: 12px;
+  color: var(--text2);
+}
+.thumb-strip {
+  display: flex; gap: 4px; overflow-x: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+  padding-bottom: 2px;
+}
+.thumb-strip img {
+  width: 56px; height: 42px; object-fit: cover;
+  border-radius: 4px; flex-shrink: 0;
+  background: var(--surface3);
+}
+.gap-indicator {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; color: var(--text3); font-size: 11px;
+}
+.gap-indicator::before, .gap-indicator::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--border2);
+}
+
+/* ── COPY PROGRESS ── */
+.progress-section { margin-top: 12px; }
+.progress-file { font-size: 11px; color: var(--text3); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.progress-bar-bg {
+  height: 6px; background: var(--surface3);
+  border-radius: 3px; overflow: hidden; margin-bottom: 4px;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 3px; transition: width 0.15s;
+}
+.progress-label { font-size: 12px; color: var(--text2); }
+
+/* ── RESULTS ── */
+.result-list { display: flex; flex-direction: column; gap: 8px; }
+.result-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--surface2); border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.result-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.result-folder { font-size: 13px; font-weight: 600; color: var(--accent); }
+.result-detail { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+.next-steps {
+  background: var(--blue2); border: 1px solid rgba(74,144,217,0.25);
+  border-radius: var(--radius); padding: 12px 16px; margin-top: 14px;
+}
+.next-steps h3 { font-size: 13px; font-weight: 600; color: var(--blue); margin-bottom: 8px; }
+.next-steps ol { padding-left: 18px; }
+.next-steps li { font-size: 12px; color: var(--text2); line-height: 1.8; }
+
+/* ── STATES ── */
+.hidden { display: none !important; }
+.muted { color: var(--text3); font-size: 12px; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 9px 18px;
+  font-size: 13px; opacity: 0; transition: all 0.2s;
+  pointer-events: none; white-space: nowrap; z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+input[type=range] {
+  accent-color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <h1>Photo Triage</h1>
+    <div class="header-sub">Group · Copy · Sort · Process · Share</div>
+  </div>
+  <div class="pipeline">
+    <div class="pipe-step active" id="pipe1">① Group &amp; Copy</div>
+    <div class="pipe-arrow">›</div>
+    <div class="pipe-step" id="pipe2">② Keep / Delete</div>
+    <div class="pipe-arrow">›</div>
+    <div class="pipe-step" id="pipe3">③ Post-process</div>
+    <div class="pipe-arrow">›</div>
+    <div class="pipe-step" id="pipe4">④ Upload</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- STEP 1: SOURCE -->
+  <div class="card">
+    <div class="card-header">
+      <div class="step-badge active" id="badge1">1</div>
+      <h2>Source folder — SD card or camera folder</h2>
+    </div>
+    <div class="card-body">
+      <div class="folder-row">
+        <div class="folder-path" id="src-path">No folder selected</div>
+        <button class="btn btn-accent" onclick="pickSource()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Select source
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: DESTINATION -->
+  <div class="card">
+    <div class="card-header">
+      <div class="step-badge" id="badge2">2</div>
+      <h2>Destination — where to copy the grouped folders</h2>
+    </div>
+    <div class="card-body">
+      <div class="folder-row">
+        <div class="folder-path" id="dst-path">No folder selected</div>
+        <button class="btn btn-accent" onclick="pickDest()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Select destination
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: SCAN & GROUP -->
+  <div class="card">
+    <div class="card-header">
+      <div class="step-badge" id="badge3">3</div>
+      <h2>Scan &amp; detect groups</h2>
+    </div>
+    <div class="card-body">
+      <div class="gap-row">
+        <label>Gap threshold:</label>
+        <input type="range" id="gap-slider" min="5" max="240" value="45" step="5" oninput="onGapChange()">
+        <div class="gap-val" id="gap-display">45 min</div>
+      </div>
+      <div class="gap-hint">Photos separated by more than this time gap will be placed in different groups.</div>
+
+      <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <button class="btn btn-accent" id="btn-scan" onclick="scanFiles()" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Scan source folder
+        </button>
+        <span class="muted" id="scan-status"></span>
+      </div>
+
+      <!-- Results -->
+      <div id="scan-results" class="hidden" style="margin-top: 16px;">
+        <div class="scan-summary" id="scan-summary"></div>
+        <div class="groups-list" id="groups-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: COPY -->
+  <div class="card" id="copy-card" style="display:none">
+    <div class="card-header">
+      <div class="step-badge" id="badge4">4</div>
+      <h2>Copy groups to destination</h2>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px; color:var(--text2); margin-bottom:14px;">
+        Files will be <strong style="color:var(--text)">copied</strong> (not moved) — originals on the SD card remain untouched.
+        Folder names: <code style="color:var(--accent)">event-1</code>, <code style="color:var(--accent)">event-2</code>, etc.
+      </p>
+
+      <button class="btn btn-primary" id="btn-copy" onclick="startCopy()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy <span id="copy-btn-label">all groups</span> to destination
+      </button>
+
+      <div class="progress-section hidden" id="copy-progress">
+        <div style="height:12px"></div>
+        <div class="progress-file" id="progress-file">Preparing…</div>
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+        <div class="progress-label" id="progress-label">0 / 0 files</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 5: DONE -->
+  <div class="card hidden" id="done-card">
+    <div class="card-header">
+      <div class="step-badge done" id="badge5">✓</div>
+      <h2>Copy complete</h2>
+    </div>
+    <div class="card-body">
+      <div class="result-list" id="result-list"></div>
+      <div class="next-steps">
+        <h3>Next steps in your pipeline</h3>
+        <ol>
+          <li><strong>Rename folders</strong> — open the destination and rename <code>event-1</code>, <code>event-2</code>, etc. to your tournament / opponent names</li>
+          <li><strong>Keep / Delete</strong> — open Photo Sorter on each folder to cull the keepers</li>
+          <li><strong>Post-process</strong> — open Darktable or RawTherapee on the kept files</li>
+          <li><strong>Upload</strong> — share to your team app or gallery</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+const IMAGES = ['jpg','jpeg','png','gif','webp','tiff','tif','bmp','heic','heif','nef','cr2','arw','orf','rw2','dng'];
+const EXIF_DATE_TAGS = [0x9003, 0x0132]; // DateTimeOriginal, DateTime
+
+let srcHandle = null;
+let dstHandle = null;
+let allFiles = [];   // [{name, handle, ts}]
+let groups = [];     // [{label, files, start, end}]
+let objectURLs = {};
+
+// ── FOLDER PICKERS ────────────────────────────────────────────────────────────
+async function pickSource() {
+  try {
+    srcHandle = await window.showDirectoryPicker({ mode: 'read' });
+    document.getElementById('src-path').textContent = srcHandle.name;
+    document.getElementById('src-path').classList.add('set');
+    checkReady();
+  } catch(e) {}
+}
+
+async function pickDest() {
+  try {
+    dstHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    document.getElementById('dst-path').textContent = dstHandle.name;
+    document.getElementById('dst-path').classList.add('set');
+    checkReady();
+  } catch(e) {}
+}
+
+function checkReady() {
+  const ready = srcHandle && dstHandle;
+  document.getElementById('btn-scan').disabled = !ready;
+  if (ready) {
+    document.getElementById('badge2').className = 'step-badge done';
+    document.getElementById('badge3').className = 'step-badge active';
+  }
+}
+
+// ── GAP SLIDER ────────────────────────────────────────────────────────────────
+function onGapChange() {
+  const v = parseInt(document.getElementById('gap-slider').value);
+  document.getElementById('gap-display').textContent = v >= 60
+    ? (v % 60 === 0 ? `${v/60} hr` : `${(v/60).toFixed(1)} hr`)
+    : `${v} min`;
+  if (allFiles.length > 0) regroup();
+}
+
+// ── EXIF TIMESTAMP READER ─────────────────────────────────────────────────────
+async function readExifDate(file) {
+  // Read first 128KB — enough for EXIF in most JPEGs and some RAWs
+  const buf = await file.slice(0, 131072).arrayBuffer();
+  const view = new DataView(buf);
+
+  // Try JPEG
+  if (view.getUint16(0) === 0xFFD8) {
+    return readJpegExif(view);
+  }
+  // Try TIFF/RAW (NEF, CR2, ARW, DNG start with TIFF header)
+  const b0 = view.getUint16(0);
+  if (b0 === 0x4949 || b0 === 0x4D4D) {
+    return readTiffExif(view, b0 === 0x4949);
+  }
+  return null;
+}
+
+function readJpegExif(view) {
+  let offset = 2;
+  while (offset < view.byteLength - 4) {
+    const marker = view.getUint16(offset);
+    if (marker === 0xFFE1) {
+      const exifStart = offset + 4;
+      if (view.byteLength < exifStart + 6) return null;
+      // Check "Exif\0\0"
+      if (view.getUint32(exifStart) === 0x45786966) {
+        const tiffStart = exifStart + 6;
+        const le = view.getUint16(tiffStart) === 0x4949;
+        return parseTiffIFD(view, tiffStart, le);
+      }
+      return null;
+    }
+    if ((marker & 0xFF00) !== 0xFF00) break;
+    const segLen = view.getUint16(offset + 2);
+    offset += 2 + segLen;
+  }
+  return null;
+}
+
+function readTiffExif(view, le) {
+  return parseTiffIFD(view, 0, le);
+}
+
+function parseTiffIFD(view, tiffBase, le) {
+  const r16 = (o) => le ? view.getUint16(tiffBase + o, true) : view.getUint16(tiffBase + o, false);
+  const r32 = (o) => le ? view.getUint32(tiffBase + o, true) : view.getUint32(tiffBase + o, false);
+
+  try {
+    const ifdOffset = r32(4);
+    if (ifdOffset + 2 > view.byteLength - tiffBase) return null;
+    const count = r16(ifdOffset);
+
+    let subifdOffset = null;
+    for (let i = 0; i < count; i++) {
+      const entryBase = ifdOffset + 2 + i * 12;
+      if (entryBase + 12 > view.byteLength - tiffBase) break;
+      const tag = r16(entryBase);
+      if (tag === 0x8769) subifdOffset = r32(entryBase + 8); // ExifIFD pointer
+      const date = tryGetDateTag(view, tiffBase, entryBase, tag, le);
+      if (date) return date;
+    }
+
+    // Check ExifIFD for DateTimeOriginal
+    if (subifdOffset) {
+      const subCount = r16(subifdOffset);
+      for (let i = 0; i < subCount; i++) {
+        const entryBase = subifdOffset + 2 + i * 12;
+        if (entryBase + 12 > view.byteLength - tiffBase) break;
+        const tag = r16(entryBase);
+        const date = tryGetDateTag(view, tiffBase, entryBase, tag, le);
+        if (date) return date;
+      }
+    }
+  } catch(e) {}
+  return null;
+}
+
+function tryGetDateTag(view, tiffBase, entryBase, tag, le) {
+  if (!EXIF_DATE_TAGS.includes(tag)) return null;
+  const r16 = (o) => le ? view.getUint16(tiffBase + o, true) : view.getUint16(tiffBase + o, false);
+  const r32 = (o) => le ? view.getUint32(tiffBase + o, true) : view.getUint32(tiffBase + o, false);
+
+  const type = r16(entryBase + 2);
+  const count = r32(entryBase + 4);
+  if (type !== 2) return null; // ASCII only
+  const valOffset = count <= 4 ? (tiffBase + entryBase + 8) : (tiffBase + r32(entryBase + 8));
+  if (valOffset + 19 > view.byteLength) return null;
+
+  let str = '';
+  for (let j = 0; j < Math.min(count - 1, 19); j++) {
+    str += String.fromCharCode(view.getUint8(valOffset + j));
+  }
+  // "YYYY:MM:DD HH:MM:SS"
+  const m = str.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+}
+
+// ── SCAN ─────────────────────────────────────────────────────────────────────
+async function scanFiles() {
+  const btn = document.getElementById('btn-scan');
+  btn.disabled = true;
+  document.getElementById('scan-status').textContent = 'Scanning…';
+  document.getElementById('scan-results').classList.add('hidden');
+  document.getElementById('copy-card').style.display = 'none';
+  document.getElementById('done-card').classList.add('hidden');
+
+  // Revoke old URLs
+  Object.values(objectURLs).forEach(u => URL.revokeObjectURL(u));
+  objectURLs = {};
+  allFiles = [];
+
+  let noDate = 0;
+  for await (const [name, handle] of srcHandle.entries()) {
+    if (handle.kind !== 'file') continue;
+    const ext = name.split('.').pop().toLowerCase();
+    if (!IMAGES.includes(ext)) continue;
+
+    const file = await handle.getFile();
+    let ts = await readExifDate(file);
+    if (!ts) {
+      ts = new Date(file.lastModified);
+      noDate++;
+    }
+    allFiles.push({ name, handle, ts, file });
+  }
+
+  if (allFiles.length === 0) {
+    toast('No image files found in source folder.');
+    btn.disabled = false;
+    document.getElementById('scan-status').textContent = '';
+    return;
+  }
+
+  allFiles.sort((a, b) => a.ts - b.ts);
+
+  document.getElementById('scan-status').textContent =
+    noDate > 0 ? `${allFiles.length} files (${noDate} used file-modified date)` : `${allFiles.length} files`;
+
+  regroup();
+  btn.disabled = false;
+  document.getElementById('badge3').className = 'step-badge done';
+  document.getElementById('badge4').className = 'step-badge active';
+}
+
+// ── REGROUP ───────────────────────────────────────────────────────────────────
+function regroup() {
+  const gapMs = parseInt(document.getElementById('gap-slider').value) * 60 * 1000;
+  groups = [];
+  let current = [];
+
+  for (let i = 0; i < allFiles.length; i++) {
+    if (i === 0) { current.push(allFiles[i]); continue; }
+    const gap = allFiles[i].ts - allFiles[i-1].ts;
+    if (gap > gapMs) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(allFiles[i]);
+  }
+  if (current.length) groups.push(current);
+
+  renderGroups();
+}
+
+// ── RENDER GROUPS ─────────────────────────────────────────────────────────────
+function renderGroups() {
+  const results = document.getElementById('scan-results');
+  results.classList.remove('hidden');
+
+  // Summary cards
+  const totalSize = allFiles.reduce((s, f) => s + (f.file?.size || 0), 0);
+  document.getElementById('scan-summary').innerHTML = `
+    <div class="summary-card">
+      <div class="label">Total photos</div>
+      <div class="value accent">${allFiles.length}</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Groups detected</div>
+      <div class="value accent">${groups.length}</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Date range</div>
+      <div class="value" style="font-size:13px; margin-top:4px">${fmtDateRange()}</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Total size</div>
+      <div class="value" style="font-size:16px; margin-top:4px">${fmtSize(totalSize)}</div>
+    </div>
+  `;
+
+  // Group cards
+  const list = document.getElementById('groups-list');
+  list.innerHTML = '';
+
+  groups.forEach((grp, gi) => {
+    const start = grp[0].ts;
+    const end = grp[grp.length - 1].ts;
+    const duration = fmtDuration(end - start);
+    const gapToNext = gi < groups.length - 1
+      ? fmtDuration(groups[gi+1][0].ts - end) : null;
+
+    const card = document.createElement('div');
+    card.className = 'group-card';
+
+    // Thumbnail strip — first 8 files
+    const thumbHtml = grp.slice(0, 8).map((f, fi) => {
+      const id = `thumb-g${gi}-${fi}`;
+      // Load URL async
+      setTimeout(() => {
+        if (!objectURLs[f.name]) {
+          const url = URL.createObjectURL(f.file);
+          objectURLs[f.name] = url;
+        }
+        const el = document.getElementById(id);
+        if (el) el.src = objectURLs[f.name];
+      }, 0);
+      return `<img id="${id}" alt="${f.name}">`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="group-card-header">
+        <div class="group-label">event-${gi+1}</div>
+        <div class="group-meta">
+          ${fmtTime(start)} – ${fmtTime(end)}
+          &nbsp;·&nbsp; ${fmtDate(start)}
+          ${duration !== '0s' ? `&nbsp;·&nbsp; ${duration}` : ''}
+        </div>
+        <div class="group-count">${grp.length} photo${grp.length !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="thumb-strip">${thumbHtml}</div>
+    `;
+    list.appendChild(card);
+
+    if (gapToNext) {
+      const gap = document.createElement('div');
+      gap.className = 'gap-indicator';
+      gap.textContent = `${gapToNext} gap`;
+      list.appendChild(gap);
+    }
+  });
+
+  // Show copy card
+  document.getElementById('copy-card').style.display = '';
+  document.getElementById('copy-btn-label').textContent =
+    `${groups.length} group${groups.length !== 1 ? 's' : ''}`;
+}
+
+// ── COPY ──────────────────────────────────────────────────────────────────────
+async function startCopy() {
+  document.getElementById('btn-copy').disabled = true;
+  document.getElementById('copy-progress').classList.remove('hidden');
+  document.getElementById('done-card').classList.add('hidden');
+
+  const totalFiles = allFiles.length;
+  let copied = 0;
+  const results = [];
+
+  for (let gi = 0; gi < groups.length; gi++) {
+    const grp = groups[gi];
+    const folderName = `event-${gi + 1}`;
+
+    // Create sub-folder in destination
+    let subDir;
+    try {
+      subDir = await dstHandle.getDirectoryHandle(folderName, { create: true });
+    } catch(e) {
+      toast(`Could not create folder ${folderName}: ${e.message}`);
+      continue;
+    }
+
+    let groupCopied = 0;
+    for (const f of grp) {
+      document.getElementById('progress-file').textContent = `Copying: ${folderName}/${f.name}`;
+
+      try {
+        const srcFile = await f.handle.getFile();
+        const dstFile = await subDir.getFileHandle(f.name, { create: true });
+        const writable = await dstFile.createWritable();
+        await writable.write(srcFile);
+        await writable.close();
+        groupCopied++;
+      } catch(e) {
+        console.error('Copy error', f.name, e);
+      }
+
+      copied++;
+      const pct = Math.round((copied / totalFiles) * 100);
+      document.getElementById('progress-fill').style.width = `${pct}%`;
+      document.getElementById('progress-label').textContent = `${copied} / ${totalFiles} files`;
+    }
+
+    results.push({ folder: folderName, count: groupCopied, start: grp[0].ts, end: grp[grp.length-1].ts });
+  }
+
+  // Show done
+  document.getElementById('progress-file').textContent = 'Done!';
+  document.getElementById('badge4').className = 'step-badge done';
+
+  const resultList = document.getElementById('result-list');
+  resultList.innerHTML = results.map(r => `
+    <div class="result-item">
+      <div class="result-icon">📁</div>
+      <div>
+        <div class="result-folder">${dstHandle.name} / ${r.folder}</div>
+        <div class="result-detail">
+          ${r.count} file${r.count !== 1 ? 's' : ''}
+          &nbsp;·&nbsp; ${fmtDate(r.start)}
+          &nbsp;·&nbsp; ${fmtTime(r.start)} – ${fmtTime(r.end)}
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('done-card').classList.remove('hidden');
+  document.getElementById('done-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Update pipeline indicators
+  document.getElementById('pipe1').className = 'pipe-step done';
+  document.getElementById('pipe2').className = 'pipe-step active';
+
+  toast(`✓ Copied ${copied} files into ${groups.length} folders.`);
+}
+
+// ── FORMATTERS ────────────────────────────────────────────────────────────────
+function fmtDate(d) {
+  return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+}
+function fmtDuration(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+function fmtDateRange() {
+  if (!allFiles.length) return '—';
+  const s = allFiles[0].ts, e = allFiles[allFiles.length-1].ts;
+  if (fmtDate(s) === fmtDate(e)) return fmtDate(s);
+  return `${fmtDate(s)} – ${fmtDate(e)}`;
+}
+function fmtSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const u = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${u[i]}`;
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+if (!window.showDirectoryPicker) {
+  document.querySelector('.main').innerHTML =
+    '<div style="text-align:center;padding:60px 20px;color:#e88">' +
+    '<div style="font-size:32px;margin-bottom:16px">⚠</div>' +
+    '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Chrome or Edge required</div>' +
+    '<div style="font-size:13px;color:#999">This app uses the File System Access API,<br>which is not supported in this browser.</div></div>';
+}
+</script>
+</body>
+</html>
