@@ -260,7 +260,7 @@ export default {
       canvas.height = wrap.clientHeight
       const ctx = canvas.getContext('2d')
 
-      ctx.fillStyle = '#1a1a1a'
+      ctx.fillStyle = getComputedStyle(this.$refs.canvasWrap).getPropertyValue('--bg').trim() || '#1a1a1a'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       if (!this.img) return
@@ -556,7 +556,7 @@ export default {
   transition: background 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.btn:hover { background: #383838; border-color: rgba(255,255,255,0.15); }
+.btn:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.15); }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.active { border-color: var(--accent); color: var(--accent); }
 

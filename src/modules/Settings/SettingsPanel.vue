@@ -51,6 +51,26 @@
             </div>
           </section>
 
+          <!-- Appearance -->
+          <section class="settings-section">
+            <h4>Appearance</h4>
+            <div class="setting-row">
+              <label>Theme</label>
+              <div class="theme-picker">
+                <button
+                  v-for="t in themeOptions" :key="t.value"
+                  class="theme-swatch"
+                  :class="{ active: settings.theme === t.value }"
+                  :style="{ background: t.swatch }"
+                  @click="settings.theme = t.value"
+                  :title="t.label"
+                >
+                  <span class="swatch-label">{{ t.label }}</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
           <!-- Defaults -->
           <section class="settings-section">
             <h4>Defaults</h4>
@@ -107,6 +127,11 @@ export default {
     return {
       cacheInfo: null,
       cacheClearing: false,
+      themeOptions: [
+        { label: 'Dark', value: 'dark', swatch: '#1a1a1a' },
+        { label: 'Gray', value: 'gray', swatch: '#808080' },
+        { label: 'Light', value: 'light', swatch: '#f0f0f0' }
+      ],
       appVersion: '0.1.0',
       thumbSizeOptions: [
         { label: 'Small (120px)', value: 120 },
@@ -250,6 +275,42 @@ export default {
   margin-bottom: 6px;
 }
 
+.theme-picker {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-swatch {
+  width: 64px;
+  height: 44px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4px;
+  transition: border-color 0.15s;
+}
+
+.theme-swatch.active {
+  border-color: var(--accent);
+}
+
+.theme-swatch:hover {
+  border-color: var(--accent);
+}
+
+.swatch-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: inherit;
+  mix-blend-mode: difference;
+  opacity: 0.7;
+}
+
 .path-input {
   display: flex;
   align-items: center;
@@ -281,7 +342,7 @@ export default {
   white-space: nowrap;
   transition: background 0.15s;
 }
-.btn-sm:hover { background: #383838; }
+.btn-sm:hover { background: var(--surface-hover); }
 .btn-sm:disabled { opacity: 0.4; cursor: default; }
 .btn-sm.active { border-color: var(--accent); color: var(--accent); }
 

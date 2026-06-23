@@ -389,7 +389,7 @@ export default {
 }
 
 .btn:hover {
-  background: #383838;
+  background: var(--surface-hover);
   border-color: rgba(255, 255, 255, 0.15);
 }
 

@@ -345,7 +345,7 @@ export default {
   transition: background 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.btn:hover { background: #383838; border-color: rgba(255,255,255,0.15); }
+.btn:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.15); }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.active { border-color: var(--accent); color: var(--accent); }
 
@@ -358,7 +358,7 @@ export default {
   font-size: 11px;
   cursor: pointer;
 }
-.btn-sm:hover { background: #383838; }
+.btn-sm:hover { background: var(--surface-hover); }
 
 .btn-danger { border-color: #ef5350; color: #ef5350; }
 .btn-danger:hover { background: rgba(239,83,80,0.12); }

@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="app" :class="'theme-' + settings.theme">
     <nav class="sidebar" @mouseenter="sidebarOpen = true" @mouseleave="sidebarOpen = false">
       <div class="drag-region"></div>
       <div class="nav-items">
@@ -103,7 +103,8 @@ export default {
         rawtherapeePath: null,
         guidePath: null,
         defaultGapThreshold: 45,
-        thumbnailSize: 180
+        thumbnailSize: 180,
+        theme: 'dark'
       },
       navItems: [
         { id: 'triage', label: 'Triage', icon: 'triage' },
@@ -177,15 +178,48 @@ export default {
 
 <style>
 :root {
+  --sidebar-collapsed: 56px;
+  --sidebar-expanded: 180px;
+  --accent: #c9a84c;
+}
+
+/* Dark theme (default) */
+.theme-dark {
   --bg: #1a1a1a;
   --surface: #242424;
   --surface2: #2e2e2e;
+  --surface-hover: #383838;
   --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.15);
   --text: #f0f0f0;
   --text2: #999;
-  --accent: #c9a84c;
-  --sidebar-collapsed: 56px;
-  --sidebar-expanded: 180px;
+  --overlay: rgba(0, 0, 0, 0.6);
+}
+
+/* Gray theme — neutral surround for color-accurate photo work */
+.theme-gray {
+  --bg: #808080;
+  --surface: #6e6e6e;
+  --surface2: #757575;
+  --surface-hover: #8a8a8a;
+  --border: rgba(0, 0, 0, 0.15);
+  --border-hover: rgba(0, 0, 0, 0.25);
+  --text: #1a1a1a;
+  --text2: #3a3a3a;
+  --overlay: rgba(0, 0, 0, 0.4);
+}
+
+/* Light theme */
+.theme-light {
+  --bg: #f0f0f0;
+  --surface: #e2e2e2;
+  --surface2: #d6d6d6;
+  --surface-hover: #c8c8c8;
+  --border: rgba(0, 0, 0, 0.1);
+  --border-hover: rgba(0, 0, 0, 0.2);
+  --text: #1a1a1a;
+  --text2: #666;
+  --overlay: rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -243,7 +277,7 @@ body {
   height: 44px;
   padding: 0 16px;
   cursor: pointer;
-  color: #888;
+  color: var(--text2);
   border-left: 3px solid transparent;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
@@ -332,14 +366,14 @@ body {
 }
 
 .toast-error {
-  background: #2a1515;
-  border: 1px solid rgba(239, 83, 80, 0.3);
+  background: var(--surface);
+  border: 1px solid rgba(239, 83, 80, 0.4);
   color: #ef5350;
 }
 
 .toast-success {
-  background: #152a15;
-  border: 1px solid rgba(102, 187, 106, 0.3);
+  background: var(--surface);
+  border: 1px solid rgba(102, 187, 106, 0.4);
   color: #66bb6a;
 }
 

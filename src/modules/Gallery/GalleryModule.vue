@@ -245,7 +245,7 @@ export default {
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn:hover { background: #383838; }
+.btn:hover { background: var(--surface-hover); }
 
 .folder-name {
   font-size: 13px;
