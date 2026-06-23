@@ -4,6 +4,7 @@ const url = require('url')
 const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
 const toolLauncher = require('./services/toolLauncher')
+const uploadService = require('./services/uploadService')
 
 const isDev = !app.isPackaged
 
@@ -143,6 +144,10 @@ ipcMain.handle('shell:openPath', (_, filePath) => {
   shell.openPath(filePath)
   return { success: true }
 })
+
+ipcMain.handle('upload:getProviders', () => uploadService.getProviders())
+ipcMain.handle('upload:run', (event, providerId, files, options) =>
+  uploadService.upload(providerId, files, options, event.sender))
 
 let _store = null
 async function getStore() {

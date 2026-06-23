@@ -34,6 +34,10 @@
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M7 12l3 2-3 2M13 16h4" />
             </template>
+            <template v-if="item.icon === 'upload'">
+              <path d="M12 16V4M12 4l5 5M12 4L7 9" />
+              <path d="M4 14v5a2 2 0 002 2h12a2 2 0 002-2v-5" />
+            </template>
           </svg>
           <transition name="fade">
             <span v-show="sidebarOpen" class="nav-label">{{ item.label }}</span>
@@ -56,6 +60,7 @@
       <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" @update-state="galleryState = $event" />
       <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
       <ProcessModule v-else-if="currentModule === 'process'" />
+      <UploadModule v-else-if="currentModule === 'upload'" />
       <div v-else class="module-placeholder">
         <span class="module-name">{{ activeLabel }}</span>
       </div>
@@ -78,11 +83,12 @@ import SorterModule from './modules/Sorter/SorterModule.vue'
 import GalleryModule from './modules/Gallery/GalleryModule.vue'
 import EditorModule from './modules/Editor/EditorModule.vue'
 import ProcessModule from './modules/Process/ProcessModule.vue'
+import UploadModule from './modules/Upload/UploadModule.vue'
 import SettingsPanel from './modules/Settings/SettingsPanel.vue'
 
 export default {
   name: 'App',
-  components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule, SettingsPanel },
+  components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule, UploadModule, SettingsPanel },
   provide() {
     return {
       appSettings: this.settings,
@@ -111,7 +117,8 @@ export default {
         { id: 'sorter', label: 'Sorter', icon: 'sorter' },
         { id: 'gallery', label: 'Gallery', icon: 'gallery' },
         { id: 'editor', label: 'Editor', icon: 'editor' },
-        { id: 'process', label: 'Process', icon: 'process' }
+        { id: 'process', label: 'Process', icon: 'process' },
+        { id: 'upload', label: 'Upload', icon: 'upload' }
       ]
     }
   },
@@ -160,7 +167,7 @@ export default {
     },
     handleGlobalKey(e) {
       if (e.metaKey || e.ctrlKey) {
-        const moduleKeys = { '1': 'triage', '2': 'sorter', '3': 'gallery', '4': 'editor', '5': 'process' }
+        const moduleKeys = { '1': 'triage', '2': 'sorter', '3': 'gallery', '4': 'editor', '5': 'process', '6': 'upload' }
         if (moduleKeys[e.key]) {
           e.preventDefault()
           this.selectModule(moduleKeys[e.key])
