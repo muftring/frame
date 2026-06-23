@@ -1,6 +1,6 @@
 # Frame
 
-A photo workflow studio built with Electron, Vue 3, and Vite. Frame helps manage the full lifecycle of photo shoots — from importing and triaging raw captures, to sorting keepers, browsing galleries, light editing, and batch processing through external tools.
+A photo workflow studio built with Electron, Vue 3, and Vite. Frame helps manage the full lifecycle of photo shoots — from importing and triaging raw captures, to sorting keepers, browsing galleries, light editing, batch processing, and uploading to cloud storage.
 
 ## Modules
 
@@ -13,6 +13,19 @@ A photo workflow studio built with Electron, Vue 3, and Vite. Frame helps manage
 **Editor** — Canvas-based image editor with rotate (90/180/flip) and crop tools. Draggable crop rectangle with corner handles, rule-of-thirds overlay, and aspect ratio presets (Free, 4:3, 3:2, 1:1, 16:9). Undo history keeps the last 5 states. Save overwrites original or save a copy.
 
 **Process** — Launch files and folders in Darktable or RawTherapee. Run RawTherapee CLI batch exports with live log streaming. Auto-detects installed tools with manual path override in Settings.
+
+**Upload** — Upload photos to cloud storage via a provider-based system. Two providers included:
+- **ArchiVault** — Upload to AWS S3 with integrity tracking via the `archivault` CLI. Supports tagging and uploaded-by metadata.
+- **iCloud Photos** — Import into Photos.app via osascript (macOS only). Files sync to iCloud automatically.
+
+Provider selection and options persist between sessions. Adding new providers requires only a new case in the upload service.
+
+## Themes
+
+Three appearance modes selectable in Settings:
+- **Dark** — default dark interface
+- **Gray** — neutral mid-gray surround (Darktable-inspired) for color-accurate photo work
+- **Light** — light interface
 
 ## Tech Stack
 
@@ -32,16 +45,18 @@ frame/
 │   └── services/
 │       ├── fileSystem.js     # Scan, EXIF, copy, trash, mkdir
 │       ├── imageProcessor.js # Thumbnails, rotate, crop, flip
-│       └── toolLauncher.js   # Darktable/RawTherapee detection & launch
+│       ├── toolLauncher.js   # Darktable/RawTherapee detection & launch
+│       └── uploadService.js  # Provider-based upload (ArchiVault, iCloud)
 ├── src/
 │   ├── main.js               # Vue app entry
-│   ├── App.vue               # Sidebar nav, toast system, settings provider
+│   ├── App.vue               # Sidebar nav, themes, toast system, settings provider
 │   └── modules/
 │       ├── Triage/            # TriageModule.vue
 │       ├── Sorter/            # SorterModule.vue
 │       ├── Gallery/           # GalleryModule.vue, ImageViewer.vue
 │       ├── Editor/            # EditorModule.vue
 │       ├── Process/           # ProcessModule.vue
+│       ├── Upload/            # UploadModule.vue
 │       └── Settings/          # SettingsPanel.vue
 ├── index.html
 ├── vite.config.js
@@ -69,7 +84,7 @@ Produces macOS DMG and ZIP for both arm64 and x64 in `dist/electron/`.
 
 | Shortcut | Action |
 |----------|--------|
-| Cmd+1–5 | Switch between modules |
+| Cmd+1–6 | Switch between modules |
 | Cmd+, | Toggle Settings panel |
 | K | Keep image (Sorter) |
 | D | Delete image (Sorter) |
@@ -82,8 +97,11 @@ Produces macOS DMG and ZIP for both arm64 and x64 in `dist/electron/`.
 |------|---------|
 | `~/.frame/thumbcache/` | Cached thumbnails (clearable in Settings) |
 | `~/.frame/temp/` | Editor undo history and working copies |
+| `~/.archivault/config.json` | ArchiVault configuration (if installed) |
 | `~/Library/Application Support/frame/` | electron-store settings |
 
 ## External Tools
 
 Frame integrates with [Darktable](https://www.darktable.org) and [RawTherapee](https://www.rawtherapee.com) for post-processing. Both are auto-detected from standard install paths. Custom paths can be set in Settings.
+
+The Upload module integrates with [ArchiVault](https://github.com/muftring/archivault) for S3-based photo archiving. ArchiVault must be installed and configured separately (`archivault config --bucket <name> --region <region>`).
