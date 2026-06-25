@@ -110,7 +110,10 @@ export default {
         guidePath: null,
         defaultGapThreshold: 45,
         thumbnailSize: 180,
-        theme: 'dark'
+        theme: 'dark',
+        archivaultCliPath: null,
+        archivaultTag: '',
+        archivaultUploadedBy: ''
       },
       navItems: [
         { id: 'triage', label: 'Triage', icon: 'triage' },

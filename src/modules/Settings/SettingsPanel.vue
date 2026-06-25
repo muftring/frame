@@ -37,6 +37,39 @@
             </div>
           </section>
 
+          <!-- Upload -->
+          <section class="settings-section">
+            <h4>Upload</h4>
+            <div class="setting-row">
+              <label>ArchiVault CLI path</label>
+              <div class="path-input">
+                <span class="path-value">{{ settings.archivaultCliPath || 'archivault (default)' }}</span>
+                <button class="btn-sm" @click="pickExecutable('archivaultCliPath')">Browse</button>
+                <button v-if="settings.archivaultCliPath" class="btn-sm" @click="clearSetting('archivaultCliPath')">Clear</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>Default tag</label>
+              <input
+                type="text"
+                class="text-input"
+                :value="settings.archivaultTag || ''"
+                @input="settings.archivaultTag = $event.target.value"
+                placeholder="e.g. lacrosse-2026"
+              />
+            </div>
+            <div class="setting-row">
+              <label>Uploaded by</label>
+              <input
+                type="text"
+                class="text-input"
+                :value="settings.archivaultUploadedBy || ''"
+                @input="settings.archivaultUploadedBy = $event.target.value"
+                placeholder="e.g. michael"
+              />
+            </div>
+          </section>
+
           <!-- Thumbnail cache -->
           <section class="settings-section">
             <h4>Thumbnail Cache</h4>
@@ -310,6 +343,21 @@ export default {
   mix-blend-mode: difference;
   opacity: 0.7;
 }
+
+.text-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.text-input:focus { border-color: var(--accent); }
+.text-input::placeholder { color: var(--text2); opacity: 0.6; }
 
 .path-input {
   display: flex;

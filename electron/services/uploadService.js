@@ -25,12 +25,18 @@ async function getProviders() {
   const result = {}
   for (const [id, provider] of Object.entries(PROVIDERS)) {
     if (provider.platform && process.platform !== provider.platform) continue
-    const info = { ...provider, id, available: true }
+
+    const info = {
+      id,
+      name: provider.name,
+      description: provider.description,
+      available: true,
+      configured: false
+    }
 
     if (id === 'archivault') {
       try {
-        const configPath = provider.configPath()
-        await fs.access(configPath)
+        await fs.access(provider.configPath())
         info.configured = true
       } catch {
         info.configured = false

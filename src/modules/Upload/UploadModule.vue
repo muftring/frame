@@ -14,7 +14,7 @@
           <span v-else class="badge not-configured">Not Configured</span>
         </div>
         <div class="provider-desc">{{ p.description }}</div>
-        <div v-if="id === 'icloud' && p.platform === 'darwin'" class="provider-note">
+        <div v-if="id === 'icloud'" class="provider-note">
           macOS only — imports into Photos.app
         </div>
       </div>
@@ -159,7 +159,7 @@
 <script>
 export default {
   name: 'UploadModule',
-  inject: ['toast'],
+  inject: ['toast', 'appSettings'],
   data() {
     return {
       providers: {},
@@ -287,6 +287,17 @@ export default {
       if (saved) {
         if (saved.provider) this.selectedProvider = saved.provider
         if (saved.options) Object.assign(this.providerOptions, saved.options)
+      }
+      if (this.appSettings) {
+        if (!this.providerOptions.cliPath && this.appSettings.archivaultCliPath) {
+          this.providerOptions.cliPath = this.appSettings.archivaultCliPath
+        }
+        if (!this.providerOptions.tag && this.appSettings.archivaultTag) {
+          this.providerOptions.tag = this.appSettings.archivaultTag
+        }
+        if (!this.providerOptions.uploadedBy && this.appSettings.archivaultUploadedBy) {
+          this.providerOptions.uploadedBy = this.appSettings.archivaultUploadedBy
+        }
       }
     },
     async saveSettings() {
