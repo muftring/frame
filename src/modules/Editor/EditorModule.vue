@@ -168,7 +168,10 @@ export default {
           this.draw()
           resolve()
         }
-        img.onerror = () => resolve()
+        img.onerror = () => {
+          this.toast('Failed to load image', 'error')
+          resolve()
+        }
         img.src = 'local-file://' + encodeURI(this.workingPath) + '?t=' + Date.now()
       })
     },

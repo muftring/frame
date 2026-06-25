@@ -220,7 +220,8 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   protocol.handle('local-file', (request) => {
-    const filePath = decodeURI(request.url.slice('local-file://'.length))
+    const raw = request.url.slice('local-file://'.length)
+    const filePath = decodeURI(raw.split('?')[0])
     return net.fetch(url.pathToFileURL(filePath).href)
   })
   await imageProcessor.ensureCacheDir()
