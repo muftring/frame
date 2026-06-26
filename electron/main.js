@@ -5,6 +5,7 @@ const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
 const toolLauncher = require('./services/toolLauncher')
 const uploadService = require('./services/uploadService')
+const sessionStore = require('./services/sessionStore')
 
 const isDev = !app.isPackaged
 
@@ -148,6 +149,26 @@ ipcMain.handle('shell:openPath', (_, filePath) => {
 ipcMain.handle('upload:getProviders', () => uploadService.getProviders())
 ipcMain.handle('upload:run', (event, providerId, files, options) =>
   uploadService.upload(providerId, files, options, event.sender))
+
+ipcMain.handle('session:create', (_, name, sourcePath) => sessionStore.sessionCreate(name, sourcePath))
+ipcMain.handle('session:list', () => sessionStore.sessionList())
+ipcMain.handle('session:get', (_, sessionId) => sessionStore.sessionGet(sessionId))
+ipcMain.handle('session:update', (_, sessionId, fields) => sessionStore.sessionUpdate(sessionId, fields))
+ipcMain.handle('session:archive', (_, sessionId) => sessionStore.sessionArchive(sessionId))
+ipcMain.handle('session:updatePipeline', (_, sessionId, stage, complete) =>
+  sessionStore.sessionUpdatePipeline(sessionId, stage, complete))
+
+ipcMain.handle('group:rename', (_, groupId, newLabel) => sessionStore.groupRename(groupId, newLabel))
+ipcMain.handle('group:list', (_, sessionId) => sessionStore.groupList(sessionId))
+
+ipcMain.handle('file:upsert', (_, sessionId, groupId, fileData) =>
+  sessionStore.fileUpsert(sessionId, groupId, fileData))
+ipcMain.handle('file:updateStatus', (_, fileId, status) => sessionStore.fileUpdateStatus(fileId, status))
+ipcMain.handle('file:updatePublished', (_, fileId, destinations) =>
+  sessionStore.fileUpdatePublished(fileId, destinations))
+ipcMain.handle('file:listByGroup', (_, groupId) => sessionStore.fileListByGroup(groupId))
+ipcMain.handle('file:listBySession', (_, sessionId, filters) =>
+  sessionStore.fileListBySession(sessionId, filters))
 
 let _store = null
 async function getStore() {
