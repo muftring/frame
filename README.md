@@ -1,24 +1,40 @@
 # Frame
 
-A photo workflow studio built with Electron, Vue 3, and Vite. Frame helps manage the full lifecycle of photo shoots — from importing and triaging raw captures, to sorting keepers, browsing galleries, light editing, batch processing, and uploading to cloud storage.
+A photo workflow studio built with Electron, Vue 3, and Vite. Frame manages the full lifecycle of a photo shoot as a **session** — import and group photos, sort keepers, edit and process, upload to cloud storage, and track completion through an end-to-end pipeline.
+
+## Sessions
+
+Sessions are the central organizing concept. Create a session when you start importing a shoot; it tracks your progress through every stage of the workflow. A persistent pipeline bar shows which stages are complete and lets you jump between them at any time.
+
+When all pipeline stages are marked complete, Frame displays a **session complete** screen with a summary of what you did: photos imported and kept, keep rate, events grouped, destinations published to, and a time span of the shoot. Completed sessions are archived from the Home screen.
 
 ## Modules
 
-**Triage** — Group incoming photos by time gaps and copy them into organized event folders. Scans EXIF timestamps, lets you adjust the grouping threshold with a slider, and previews each group with thumbnails before copying.
+**Home** — Create and manage sessions. Shows active sessions with pipeline progress bars and quick Resume actions. Completed sessions appear in a distinct section with keep rate and publish destination. Start a new import by naming a session and optionally linking a source folder.
+
+**Triage** — Group incoming photos by time gaps and copy them into organized event folders. Scans EXIF timestamps, adjusts grouping threshold with a slider, and previews each group with thumbnails before copying. In session mode, groups and files are registered in the database after copying so the full pipeline can track them.
 
 **Sorter** — Flip through images one at a time to keep or delete. Filmstrip navigation, full-resolution viewer, keyboard-driven workflow (K to keep, D to delete, arrow keys to navigate). Trashed files go to a `.frame-trash` folder with restore and empty-trash support.
 
-**Gallery** — Browse a folder as a responsive thumbnail grid with lazy loading via IntersectionObserver. Click any thumbnail to open a full-screen viewer with EXIF metadata. Right-click for context menu to open in Darktable, RawTherapee, or reveal in Finder.
+In session mode: loads files directly from the session database (not a folder), shows group labels in the viewer, tracks keep/delete status per file, offers a "Resume from where you left off" prompt on re-entry, and shows a "Mark Sort Complete" button once every file has been reviewed.
 
-**Editor** — Canvas-based image editor with rotate (90/180/flip) and crop tools. Draggable crop rectangle with corner handles, rule-of-thirds overlay, and aspect ratio presets (Free, 4:3, 3:2, 1:1, 16:9). Undo history keeps the last 5 states. Save overwrites original or save a copy.
+**Gallery** — Browse images from multiple sources via a left sidebar:
 
-**Process** — Launch files and folders in Darktable or RawTherapee. Run RawTherapee CLI batch exports with live log streaming. Auto-detects installed tools with manual path override in Settings.
+- **Smart Albums** — dynamic albums defined by rule sets (status, rating, date range, filename, size, published destination). A rule builder modal lets you create and edit albums with live preview counts. Five default albums ship with every install.
+- **This Session** — auto-generated views for All, Kept, Deleted, and Unreviewed files in the active session, plus individual event groups.
+- **Open Folder** — classic folder browse mode.
+
+The thumbnail grid uses IntersectionObserver for lazy loading. Click any thumbnail for a full-screen viewer; a slide-in metadata panel shows EXIF data and ratings. Right-click for a context menu to open in Darktable, RawTherapee, or reveal in Finder.
+
+**Editor** — Canvas-based image editor with rotate (90/180/flip) and crop tools. Draggable crop rectangle with corner handles, rule-of-thirds overlay, and aspect ratio presets (Free, 4:3, 3:2, 1:1, 16:9). Undo history keeps the last 5 states. Save overwrites the original or saves a copy. In session mode, each save appends an operation log to the file's edit history in the database.
+
+**Process** — Launch files and folders in Darktable or RawTherapee. Run RawTherapee CLI batch exports with live log streaming. In session mode, a "Session Kept Files" button loads all kept files as the export source, and a successful export marks the Process stage complete.
 
 **Upload** — Upload photos to cloud storage via a provider-based system. Two providers included:
 - **ArchiVault** — Upload to AWS S3 with integrity tracking via the `archivault` CLI. Supports tagging and uploaded-by metadata.
 - **iCloud Photos** — Import into Photos.app via osascript (macOS only). Files sync to iCloud automatically.
 
-Provider selection and options persist between sessions. Adding new providers requires only a new case in the upload service.
+In session mode, a "Session Kept Files" button loads kept files as the upload source. After a successful upload, each file's published destinations are recorded in the database. When all kept files have at least one destination, the Publish stage is marked complete and the session complete screen is shown.
 
 ## Themes
 
@@ -32,6 +48,7 @@ Three appearance modes selectable in Settings:
 - **Electron 35** — desktop shell with context-isolated IPC
 - **Vue 3** (Options API) — UI framework
 - **Vite** — dev server and renderer bundler
+- **better-sqlite3** — embedded SQLite database (synchronous, WAL mode)
 - **Sharp** — thumbnail generation, rotate, crop, flip
 - **electron-store** — settings and window state persistence
 
@@ -40,20 +57,29 @@ Three appearance modes selectable in Settings:
 ```
 frame/
 ├── electron/
-│   ├── main.js              # Electron main process, IPC handlers
-│   ├── preload.js            # Context bridge (invoke + on)
+│   ├── main.js              # Electron main process, all IPC handlers
+│   ├── preload.js           # Context bridge (invoke + on)
 │   └── services/
 │       ├── fileSystem.js     # Scan, EXIF, copy, trash, mkdir
 │       ├── imageProcessor.js # Thumbnails, rotate, crop, flip
+│       ├── sessionStore.js   # SQLite sessions, groups, files, albums, pipeline
 │       ├── toolLauncher.js   # Darktable/RawTherapee detection & launch
 │       └── uploadService.js  # Provider-based upload (ArchiVault, iCloud)
 ├── src/
 │   ├── main.js               # Vue app entry
-│   ├── App.vue               # Sidebar nav, themes, toast system, settings provider
+│   ├── App.vue               # Nav, session pipeline bar, theme, toasts, providers
 │   └── modules/
+│       ├── Home/
+│       │   ├── HomeModule.vue      # Session list, new session form
+│       │   └── SessionComplete.vue # Completion overlay with stats and gallery strip
 │       ├── Triage/            # TriageModule.vue
 │       ├── Sorter/            # SorterModule.vue
-│       ├── Gallery/           # GalleryModule.vue, ImageViewer.vue
+│       ├── Gallery/
+│       │   ├── GalleryModule.vue   # Main grid, toolbar, source routing
+│       │   ├── SmartAlbumsPanel.vue # Left sidebar: albums + session sources
+│       │   ├── SmartAlbumEditor.vue # Album rule builder modal
+│       │   ├── ImageViewer.vue     # Full-screen overlay viewer
+│       │   └── MetadataPanel.vue   # Slide-in EXIF panel
 │       ├── Editor/            # EditorModule.vue
 │       ├── Process/           # ProcessModule.vue
 │       ├── Upload/            # UploadModule.vue
@@ -70,7 +96,7 @@ npm install
 npm run dev
 ```
 
-This starts the Vite dev server and launches Electron. The app opens a 1280x820 window with a collapsible sidebar for module navigation.
+This starts the Vite dev server and launches Electron. The app opens a 1280x820 window with a collapsible sidebar for module navigation. The SQLite database is created automatically at `~/.frame/frame.db` on first launch.
 
 ## Building
 
@@ -84,21 +110,23 @@ Produces macOS DMG and ZIP for both arm64 and x64 in `dist/electron/`.
 
 | Shortcut | Action |
 |----------|--------|
-| Cmd+1–6 | Switch between modules |
+| Cmd+0 | Home |
+| Cmd+1–6 | Switch between modules (Triage → Upload) |
 | Cmd+, | Toggle Settings panel |
 | K | Keep image (Sorter) |
 | D | Delete image (Sorter) |
-| Left/Right | Navigate images (Sorter, Gallery, Editor) |
-| Escape | Close viewer/panel |
+| Left/Right | Navigate images (Sorter) |
+| Escape | Close viewer / panel |
 
 ## Data Locations
 
 | Path | Purpose |
 |------|---------|
+| `~/.frame/frame.db` | SQLite database — sessions, files, smart albums, pipeline state |
 | `~/.frame/thumbcache/` | Cached thumbnails (clearable in Settings) |
 | `~/.frame/temp/` | Editor undo history and working copies |
 | `~/.archivault/config.json` | ArchiVault configuration (if installed) |
-| `~/Library/Application Support/frame/` | electron-store settings |
+| `~/Library/Application Support/frame/` | electron-store settings and window bounds |
 
 ## External Tools
 
