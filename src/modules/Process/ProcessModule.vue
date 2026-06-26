@@ -291,7 +291,7 @@ export default {
   max-width: 900px;
   margin: 0 auto;
   overflow-y: auto;
-  height: 100vh;
+  height: 100%;
 }
 
 .tool-status {

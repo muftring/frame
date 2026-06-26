@@ -11,6 +11,9 @@
           @click="selectModule(item.id)"
         >
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <template v-if="item.icon === 'home'">
+              <path d="M3 12l9-9 9 9M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9" />
+            </template>
             <template v-if="item.icon === 'triage'">
               <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               <path d="M12 11l3 3m0 0l-3 3m3-3H9" />
@@ -54,18 +57,49 @@
         </transition>
       </div>
     </nav>
+
     <main class="content">
-      <TriageModule v-if="currentModule === 'triage'" @navigate="handleNavigate" />
-      <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
-      <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" @update-state="galleryState = $event" />
-      <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
-      <ProcessModule v-else-if="currentModule === 'process'" />
-      <UploadModule v-else-if="currentModule === 'upload'" />
-      <div v-else class="module-placeholder">
-        <span class="module-name">{{ activeLabel }}</span>
+      <!-- Pipeline bar — visible when a session is active and not on the Home screen -->
+      <div v-if="activeSession && currentModule !== 'home'" class="pipeline-bar">
+        <span class="pipeline-session-name">{{ activeSession.name }}</span>
+        <div class="pipeline-steps">
+          <template v-for="(stage, i) in pipelineStages" :key="stage.id">
+            <span v-if="i > 0" class="step-dot">·</span>
+            <button
+              class="pipeline-step"
+              :class="{
+                'step-complete': !!activeSession[stage.completeKey],
+                'step-current': activeStage === stage.id
+              }"
+              @click="navigateToStage(stage)"
+            >
+              <svg v-if="activeSession[stage.completeKey]" class="step-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 6l3 3 5-5" />
+              </svg>
+              {{ stage.label }}
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Module area -->
+      <div class="module-area">
+        <HomeModule
+          v-if="currentModule === 'home'"
+          @session-started="handleSessionStarted"
+          @session-resume="handleSessionResume"
+        />
+        <TriageModule v-else-if="currentModule === 'triage'" @navigate="handleNavigate" />
+        <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
+        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" @update-state="galleryState = $event" />
+        <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
+        <ProcessModule v-else-if="currentModule === 'process'" />
+        <UploadModule v-else-if="currentModule === 'upload'" />
       </div>
     </main>
+
     <SettingsPanel v-if="showSettings" :settings="settings" @close="showSettings = false" />
+
     <!-- Toast notifications -->
     <div class="toast-container">
       <transition-group name="toast">
@@ -78,6 +112,7 @@
 </template>
 
 <script>
+import HomeModule from './modules/Home/HomeModule.vue'
 import TriageModule from './modules/Triage/TriageModule.vue'
 import SorterModule from './modules/Sorter/SorterModule.vue'
 import GalleryModule from './modules/Gallery/GalleryModule.vue'
@@ -86,9 +121,36 @@ import ProcessModule from './modules/Process/ProcessModule.vue'
 import UploadModule from './modules/Upload/UploadModule.vue'
 import SettingsPanel from './modules/Settings/SettingsPanel.vue'
 
+const PIPELINE_STAGES = [
+  { id: 'triage',  label: 'Triage',  completeKey: 'triageComplete',  module: 'triage' },
+  { id: 'sort',    label: 'Sort',    completeKey: 'sortComplete',    module: 'sorter' },
+  { id: 'edit',    label: 'Edit',    completeKey: 'editComplete',    module: 'editor' },
+  { id: 'process', label: 'Process', completeKey: 'processComplete', module: 'process' },
+  { id: 'publish', label: 'Publish', completeKey: 'publishComplete', module: 'upload' },
+]
+
+const MODULE_STAGE = {
+  triage: 'triage',
+  sorter: 'sort',
+  editor: 'edit',
+  process: 'process',
+  upload: 'publish',
+}
+
+const STAGE_MODULE = {
+  triage: 'triage',
+  sort: 'sorter',
+  edit: 'editor',
+  process: 'process',
+  publish: 'upload',
+}
+
 export default {
   name: 'App',
-  components: { TriageModule, SorterModule, GalleryModule, EditorModule, ProcessModule, UploadModule, SettingsPanel },
+  components: {
+    HomeModule, TriageModule, SorterModule, GalleryModule,
+    EditorModule, ProcessModule, UploadModule, SettingsPanel
+  },
   provide() {
     return {
       appSettings: this.settings,
@@ -98,11 +160,13 @@ export default {
   data() {
     return {
       sidebarOpen: false,
-      currentModule: 'triage',
+      currentModule: 'home',
       moduleData: null,
       galleryState: null,
       showSettings: false,
       settingsReady: false,
+      activeSession: null,
+      pipelineStages: PIPELINE_STAGES,
       toasts: [],
       settings: {
         darktablePath: null,
@@ -116,19 +180,19 @@ export default {
         archivaultUploadedBy: ''
       },
       navItems: [
-        { id: 'triage', label: 'Triage', icon: 'triage' },
-        { id: 'sorter', label: 'Sorter', icon: 'sorter' },
+        { id: 'home',    label: 'Home',    icon: 'home' },
+        { id: 'triage',  label: 'Triage',  icon: 'triage' },
+        { id: 'sorter',  label: 'Sorter',  icon: 'sorter' },
         { id: 'gallery', label: 'Gallery', icon: 'gallery' },
-        { id: 'editor', label: 'Editor', icon: 'editor' },
+        { id: 'editor',  label: 'Editor',  icon: 'editor' },
         { id: 'process', label: 'Process', icon: 'process' },
-        { id: 'upload', label: 'Upload', icon: 'upload' }
+        { id: 'upload',  label: 'Upload',  icon: 'upload' },
       ]
     }
   },
   computed: {
-    activeLabel() {
-      const item = this.navItems.find(i => i.id === this.currentModule)
-      return item ? item.label : ''
+    activeStage() {
+      return MODULE_STAGE[this.currentModule] || null
     }
   },
   watch: {
@@ -161,6 +225,41 @@ export default {
       this.moduleData = data
       this.showSettings = false
     },
+    handleSessionStarted(session) {
+      this.activeSession = {
+        id: session.id,
+        name: session.name,
+        currentStage: 'triage',
+        triageComplete: false,
+        sortComplete: false,
+        editComplete: false,
+        processComplete: false,
+        publishComplete: false,
+      }
+      this.currentModule = 'triage'
+      this.moduleData = null
+      this.showSettings = false
+    },
+    handleSessionResume(session) {
+      this.activeSession = {
+        id: session.id,
+        name: session.name,
+        currentStage: session.currentStage || 'triage',
+        triageComplete: !!session.triageComplete,
+        sortComplete: !!session.sortComplete,
+        editComplete: !!session.editComplete,
+        processComplete: !!session.processComplete,
+        publishComplete: !!session.publishComplete,
+      }
+      this.currentModule = STAGE_MODULE[session.currentStage] || 'triage'
+      this.moduleData = null
+      this.showSettings = false
+    },
+    navigateToStage(stage) {
+      this.currentModule = stage.module
+      this.moduleData = null
+      this.showSettings = false
+    },
     addToast(message, type = 'info') {
       const id = Date.now() + Math.random()
       this.toasts.push({ id, message, type })
@@ -170,7 +269,15 @@ export default {
     },
     handleGlobalKey(e) {
       if (e.metaKey || e.ctrlKey) {
-        const moduleKeys = { '1': 'triage', '2': 'sorter', '3': 'gallery', '4': 'editor', '5': 'process', '6': 'upload' }
+        const moduleKeys = {
+          '0': 'home',
+          '1': 'triage',
+          '2': 'sorter',
+          '3': 'gallery',
+          '4': 'editor',
+          '5': 'process',
+          '6': 'upload',
+        }
         if (moduleKeys[e.key]) {
           e.preventDefault()
           this.selectModule(moduleKeys[e.key])
@@ -332,25 +439,104 @@ body {
   margin-bottom: 12px;
 }
 
+/* ── Content area ─────────────────────────────── */
 .content {
   flex: 1;
   display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.module-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  overflow: hidden;
 }
 
-.module-placeholder {
-  text-align: center;
+/* ── Pipeline bar ─────────────────────────────── */
+.pipeline-bar {
+  height: 40px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 0;
+  overflow: hidden;
 }
 
-.module-name {
-  font-size: 1.5rem;
-  font-weight: 600;
+.pipeline-session-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  flex-shrink: 0;
+  padding-right: 14px;
+  margin-right: 6px;
+  border-right: 1px solid var(--border);
+}
+
+.pipeline-steps {
+  display: flex;
+  align-items: center;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 400;
+  font-family: inherit;
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pipeline-step:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.pipeline-step.step-complete {
   color: var(--accent);
 }
 
-/* Toast notifications */
+.pipeline-step.step-current {
+  color: var(--accent);
+  background: rgba(201, 168, 76, 0.08);
+  font-weight: 600;
+}
+
+.step-dot {
+  color: var(--border-hover);
+  pointer-events: none;
+  padding: 0 1px;
+  font-size: 12px;
+  user-select: none;
+}
+
+.step-check {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+/* ── Toast notifications ──────────────────────── */
 .toast-container {
   position: fixed;
   bottom: 20px;
@@ -402,7 +588,7 @@ body {
   transform: translateX(-20px);
 }
 
-/* Global spinner */
+/* ── Global utilities ─────────────────────────── */
 .spinner {
   width: 20px;
   height: 20px;
@@ -417,7 +603,6 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Global empty state */
 .empty-state-full {
   display: flex;
   flex-direction: column;
@@ -446,7 +631,6 @@ body {
   color: var(--text2);
 }
 
-/* Skeleton animation for loading placeholders */
 .skeleton {
   background: linear-gradient(90deg, var(--surface2) 25%, #363636 50%, var(--surface2) 75%);
   background-size: 200% 100%;

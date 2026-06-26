@@ -1,0 +1,583 @@
+<template>
+  <div class="home">
+
+    <!-- Recent Sessions -->
+    <section class="home-sessions">
+      <h2 class="home-section-title">Recent Sessions</h2>
+
+      <div v-if="loading" class="home-loading">
+        <div class="spinner"></div>
+      </div>
+
+      <template v-else>
+        <div v-if="sessions.length === 0" class="home-empty">
+          No sessions yet — import photos to get started
+        </div>
+
+        <div v-if="activeSessions.length" class="session-list">
+          <div v-for="s in activeSessions" :key="s.id" class="session-card">
+            <div class="sc-top">
+              <div class="sc-name-wrap">
+                <input
+                  v-if="editingId === s.id"
+                  ref="editInput"
+                  v-model="editingName"
+                  class="sc-name-input"
+                  @keydown.enter="saveName(s)"
+                  @keydown.esc="cancelEdit"
+                  @blur="saveName(s)"
+                />
+                <span v-else class="sc-name" title="Click to rename" @click="startEdit(s)">
+                  {{ s.name }}
+                </span>
+              </div>
+              <div class="sc-badges">
+                <span class="badge-active">In Progress</span>
+                <button class="btn-archive-sm" @click="doArchive(s)">Archive</button>
+              </div>
+            </div>
+
+            <div class="sc-meta">
+              Created {{ fmtDate(s.created_at) }}
+              <span class="meta-dot">·</span>
+              {{ s.fileCount }} {{ s.fileCount === 1 ? 'file' : 'files' }}
+              <span class="meta-dot">·</span>
+              {{ s.groupCount }} {{ s.groupCount === 1 ? 'group' : 'groups' }}
+            </div>
+
+            <div class="sc-pipeline">
+              <div
+                v-for="stage in STAGES"
+                :key="stage.id"
+                class="sc-seg"
+                :class="{ done: !!s[stage.doneKey] }"
+              >
+                <div class="sc-seg-bar"></div>
+                <span class="sc-seg-label">{{ stage.label }}</span>
+              </div>
+            </div>
+
+            <div class="sc-actions">
+              <button class="btn-resume" @click="doResume(s)">Resume →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Archived toggle -->
+        <div v-if="archivedSessions.length > 0" class="archived-toggle-wrap">
+          <button class="archived-toggle" @click="showArchived = !showArchived">
+            {{ showArchived ? 'Hide' : 'Show' }} archived ({{ archivedSessions.length }})
+          </button>
+          <div v-if="showArchived" class="session-list archived-list">
+            <div v-for="s in archivedSessions" :key="s.id" class="session-card session-card-archived">
+              <div class="sc-top">
+                <span class="sc-name sc-name-static">{{ s.name }}</span>
+                <span class="badge-archived">Archived</span>
+              </div>
+              <div class="sc-meta">
+                Created {{ fmtDate(s.created_at) }}
+                <span class="meta-dot">·</span>
+                {{ s.fileCount }} {{ s.fileCount === 1 ? 'file' : 'files' }}
+              </div>
+              <div class="sc-pipeline">
+                <div
+                  v-for="stage in STAGES"
+                  :key="stage.id"
+                  class="sc-seg"
+                  :class="{ done: !!s[stage.doneKey] }"
+                >
+                  <div class="sc-seg-bar"></div>
+                  <span class="sc-seg-label">{{ stage.label }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </section>
+
+    <!-- Start New Session -->
+    <div class="new-session-card">
+      <h2 class="home-section-title">Start New Session</h2>
+      <div class="ns-form">
+        <div class="ns-row">
+          <input
+            v-model="newName"
+            class="ns-name-input"
+            placeholder="Session name"
+            @keydown.enter="startImport"
+          />
+        </div>
+        <div class="ns-row ns-source-row">
+          <span class="ns-source-path" :class="{ 'ns-no-source': !newSource }">
+            {{ newSource || 'No source folder selected' }}
+          </span>
+          <button class="btn-secondary" @click="pickSource">Pick folder</button>
+        </div>
+        <div class="ns-row ns-actions-row">
+          <button
+            class="btn-primary"
+            :disabled="!newName.trim() || starting"
+            @click="startImport"
+          >
+            {{ starting ? 'Creating…' : 'Start import →' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<script>
+const STAGES = [
+  { id: 'triage',  label: 'Triage',  doneKey: 'triageComplete' },
+  { id: 'sort',    label: 'Sort',    doneKey: 'sortComplete' },
+  { id: 'edit',    label: 'Edit',    doneKey: 'editComplete' },
+  { id: 'process', label: 'Process', doneKey: 'processComplete' },
+  { id: 'publish', label: 'Publish', doneKey: 'publishComplete' },
+]
+
+export default {
+  name: 'HomeModule',
+  emits: ['session-started', 'session-resume'],
+  data() {
+    return {
+      STAGES,
+      loading: false,
+      sessions: [],
+      showArchived: false,
+      editingId: null,
+      editingName: '',
+      newName: this.suggestName(),
+      newSource: '',
+      starting: false,
+    }
+  },
+  computed: {
+    activeSessions() {
+      return this.sessions.filter(s => s.status === 'active')
+    },
+    archivedSessions() {
+      return this.sessions.filter(s => s.status === 'archived')
+    },
+  },
+  mounted() {
+    this.loadSessions()
+  },
+  methods: {
+    suggestName() {
+      const d = new Date()
+      return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) + ' Session'
+    },
+    async loadSessions() {
+      this.loading = true
+      const result = await window.api.invoke('session:list')
+      this.loading = false
+      if (Array.isArray(result)) this.sessions = result
+    },
+    fmtDate(ts) {
+      if (!ts) return '—'
+      return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    },
+    startEdit(session) {
+      this.editingId = session.id
+      this.editingName = session.name
+      this.$nextTick(() => {
+        const ref = this.$refs.editInput
+        const el = Array.isArray(ref) ? ref[0] : ref
+        el?.focus()
+        el?.select()
+      })
+    },
+    cancelEdit() {
+      this.editingId = null
+    },
+    async saveName(session) {
+      const name = this.editingName.trim()
+      this.editingId = null
+      if (!name || name === session.name) return
+      await window.api.invoke('session:update', session.id, { name })
+      session.name = name
+    },
+    async doArchive(session) {
+      await window.api.invoke('session:archive', session.id)
+      session.status = 'archived'
+    },
+    doResume(session) {
+      this.$emit('session-resume', session)
+    },
+    async pickSource() {
+      const folder = await window.api.invoke('dialog:openFolder')
+      if (folder) this.newSource = folder
+    },
+    async startImport() {
+      const name = this.newName.trim()
+      if (!name || this.starting) return
+      this.starting = true
+      const session = await window.api.invoke('session:create', name, this.newSource || null)
+      this.starting = false
+      if (!session || session.error) return
+      this.newName = this.suggestName()
+      this.newSource = ''
+      this.$emit('session-started', session)
+    },
+  },
+}
+</script>
+
+<style scoped>
+.home {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* ── Sessions section ─────────────────────────── */
+.home-sessions {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 32px 16px;
+}
+
+.home-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 16px;
+}
+
+.home-loading {
+  display: flex;
+  justify-content: center;
+  padding: 60px 0;
+}
+
+.home-empty {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--text2);
+  font-size: 14px;
+}
+
+/* ── Session cards ────────────────────────────── */
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  transition: border-color 0.15s;
+}
+
+.session-card:hover {
+  border-color: var(--border-hover);
+}
+
+.session-card-archived {
+  opacity: 0.6;
+}
+
+.sc-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.sc-name-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.sc-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: text;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.sc-name:not(.sc-name-static):hover {
+  color: var(--accent);
+}
+
+.sc-name-static {
+  cursor: default;
+}
+
+.sc-name-input {
+  width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--surface2);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 2px 8px;
+  outline: none;
+  font-family: inherit;
+}
+
+.sc-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.badge-active {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(201, 168, 76, 0.12);
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.badge-archived {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.btn-archive-sm {
+  font-size: 11px;
+  color: var(--text2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.btn-archive-sm:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.sc-meta {
+  font-size: 12px;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 13px;
+}
+
+.meta-dot {
+  opacity: 0.35;
+}
+
+/* ── Pipeline progress bars ───────────────────── */
+.sc-pipeline {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.sc-seg {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sc-seg-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface2);
+  transition: background 0.2s;
+}
+
+.sc-seg.done .sc-seg-bar {
+  background: var(--accent);
+}
+
+.sc-seg-label {
+  font-size: 10px;
+  color: var(--text2);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.sc-seg.done .sc-seg-label {
+  color: var(--accent);
+}
+
+.sc-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-resume {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(201, 168, 76, 0.1);
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  border-radius: 6px;
+  padding: 6px 18px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.btn-resume:hover {
+  background: rgba(201, 168, 76, 0.18);
+  border-color: var(--accent);
+}
+
+/* ── Archived toggle ──────────────────────────── */
+.archived-toggle-wrap {
+  margin-top: 20px;
+}
+
+.archived-toggle {
+  font-size: 12px;
+  color: var(--text2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+
+.archived-toggle:hover {
+  color: var(--text);
+}
+
+.archived-list {
+  margin-top: 10px;
+}
+
+/* ── New Session card ─────────────────────────── */
+.new-session-card {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 20px 32px 24px;
+}
+
+.ns-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.ns-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ns-name-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.ns-name-input:focus {
+  border-color: var(--accent);
+}
+
+.ns-source-row {
+  justify-content: space-between;
+}
+
+.ns-source-path {
+  font-size: 12px;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.ns-no-source {
+  opacity: 0.45;
+  font-style: italic;
+}
+
+.ns-actions-row {
+  justify-content: flex-end;
+}
+
+.btn-primary {
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #1a1a1a;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 22px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.btn-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-secondary:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+</style>

@@ -92,13 +92,17 @@ function sessionList() {
   try {
     const db = getDb()
     return db.prepare(`
-      SELECT s.id, s.name, s.status, s.updated_at,
-             COALESCE(p.current_stage, 'triage') AS currentStage,
-             COUNT(f.id) AS fileCount
+      SELECT s.id, s.name, s.status, s.created_at, s.updated_at,
+             COALESCE(p.current_stage, 'triage')    AS currentStage,
+             COALESCE(p.triage_complete,  0)         AS triageComplete,
+             COALESCE(p.sort_complete,    0)         AS sortComplete,
+             COALESCE(p.edit_complete,    0)         AS editComplete,
+             COALESCE(p.process_complete, 0)         AS processComplete,
+             COALESCE(p.publish_complete, 0)         AS publishComplete,
+             (SELECT COUNT(*) FROM files        WHERE session_id = s.id) AS fileCount,
+             (SELECT COUNT(*) FROM event_groups WHERE session_id = s.id) AS groupCount
       FROM sessions s
       LEFT JOIN pipeline_state p ON p.session_id = s.id
-      LEFT JOIN files f ON f.session_id = s.id
-      GROUP BY s.id
       ORDER BY s.updated_at DESC
     `).all()
   } catch (err) {
