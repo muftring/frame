@@ -299,6 +299,32 @@ function fileListByGroup(groupId) {
   }
 }
 
+function fileGetByPath(filePath) {
+  try {
+    const db = getDb()
+    return db.prepare(`
+      SELECT f.*, s.name AS sessionName
+      FROM files f
+      LEFT JOIN sessions s ON s.id = f.session_id
+      WHERE f.full_path = ?
+      ORDER BY f.created_at DESC
+      LIMIT 1
+    `).get(filePath) || null
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function fileSetRating(fileId, rating) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET rating = ? WHERE id = ?').run(rating, fileId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function fileListBySession(sessionId, filters = {}) {
   try {
     const db = getDb()
@@ -333,5 +359,7 @@ module.exports = {
   fileUpdateStatus,
   fileUpdatePublished,
   fileListByGroup,
-  fileListBySession
+  fileListBySession,
+  fileGetByPath,
+  fileSetRating
 }

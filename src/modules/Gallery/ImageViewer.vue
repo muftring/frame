@@ -10,31 +10,43 @@
         </div>
         <button class="nav-arrow nav-right" @click.stop="$emit('next')" :disabled="!hasNext">&rsaquo;</button>
       </div>
+
       <div class="viewer-bar">
         <span class="bar-filename">{{ image.name }}</span>
-        <span v-if="meta" class="bar-meta">
-          {{ meta.width }} &times; {{ meta.height }} &middot;
-          {{ formatSize(image.size) }}
-          <template v-if="meta.exifDate"> &middot; {{ meta.exifDate }}</template>
-        </span>
-        <span v-else class="bar-meta">{{ formatSize(image.size) }}</span>
+        <span class="bar-meta">{{ formatSize(image.size) }}</span>
+        <button
+          class="bar-info-btn"
+          :class="{ active: showMeta }"
+          @click.stop="showMeta = !showMeta"
+          title="Image info (i)"
+        >ⓘ</button>
       </div>
+
+      <!-- Metadata panel — slides in from right -->
+      <MetadataPanel
+        :visible="showMeta"
+        :image="image"
+        @close="showMeta = false"
+      />
     </div>
   </transition>
 </template>
 
 <script>
+import MetadataPanel from './MetadataPanel.vue'
+
 export default {
   name: 'ImageViewer',
+  components: { MetadataPanel },
   props: {
     visible: { type: Boolean, default: false },
-    image: { type: Object, default: () => ({}) },
+    image:   { type: Object, default: () => ({}) },
     hasPrev: { type: Boolean, default: false },
     hasNext: { type: Boolean, default: false }
   },
   emits: ['close', 'prev', 'next'],
   data() {
-    return { meta: null }
+    return { showMeta: false }
   },
   computed: {
     imageUrl() {
@@ -43,46 +55,36 @@ export default {
     }
   },
   watch: {
-    image: {
-      immediate: true,
-      handler(img) {
-        this.meta = null
-        if (img && img.path) this.loadMeta(img.path)
-      }
-    },
     visible(v) {
       if (v) {
         this._keyHandler = this.handleKey.bind(this)
         window.addEventListener('keydown', this._keyHandler)
       } else {
         window.removeEventListener('keydown', this._keyHandler)
+        this.showMeta = false
       }
+    },
+    // close panel when navigating to a new image
+    'image.path'() {
+      // keep panel open but MetadataPanel will reload via its own watcher
     }
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this._keyHandler)
   },
   methods: {
-    async loadMeta(filePath) {
-      const m = await window.api.invoke('img:getMetadata', filePath)
-      if (m.error) return
-      const exif = await window.api.invoke('fs:readExif', filePath)
-      this.meta = {
-        width: m.width,
-        height: m.height,
-        exifDate: exif.timestamp
-          ? new Date(exif.timestamp).toLocaleString('en-US', {
-              year: 'numeric', month: 'short', day: 'numeric',
-              hour: 'numeric', minute: '2-digit'
-            })
-          : null
-      }
-    },
     handleKey(e) {
       switch (e.key) {
-        case 'Escape': this.$emit('close'); break
-        case 'ArrowLeft': this.$emit('prev'); e.preventDefault(); break
+        case 'Escape':
+          if (this.showMeta) { this.showMeta = false; return }
+          this.$emit('close')
+          break
+        case 'ArrowLeft':  this.$emit('prev'); e.preventDefault(); break
         case 'ArrowRight': this.$emit('next'); e.preventDefault(); break
+        case 'i':
+        case 'I':
+          this.showMeta = !this.showMeta
+          break
       }
     },
     handleError(e) {
@@ -115,6 +117,7 @@ export default {
   display: flex;
   align-items: center;
   overflow: hidden;
+  position: relative; /* MetadataPanel positions relative to this */
 }
 
 .viewer-image-area {
@@ -124,6 +127,7 @@ export default {
   justify-content: center;
   height: 100%;
   padding: 20px;
+  transition: padding-right 0.22s ease;
 }
 
 .viewer-img {
@@ -146,10 +150,12 @@ export default {
   justify-content: center;
   flex-shrink: 0;
   transition: color 0.15s, background 0.15s;
+  z-index: 1;
 }
 .nav-arrow:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
 .nav-arrow:disabled { opacity: 0.2; cursor: default; }
 
+/* ── Bottom bar ───────────────────────────────── */
 .viewer-bar {
   height: 44px;
   display: flex;
@@ -158,19 +164,56 @@ export default {
   gap: 16px;
   background: rgba(0, 0, 0, 0.6);
   flex-shrink: 0;
+  padding: 0 12px;
+  position: relative;
+  z-index: 11; /* above the panel */
 }
 
 .bar-filename {
   font-size: 13px;
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.9);
   font-family: 'SF Mono', 'Menlo', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px;
 }
 
 .bar-meta {
   font-size: 12px;
-  color: var(--text2);
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
 }
 
+.bar-info-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 16px;
+  width: 28px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0;
+}
+.bar-info-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.bar-info-btn.active {
+  color: #c9a84c;
+  border-color: rgba(201, 168, 76, 0.5);
+  background: rgba(201, 168, 76, 0.1);
+}
+
+/* ── Transitions ──────────────────────────────── */
 .viewer-fade-enter-active,
 .viewer-fade-leave-active {
   transition: opacity 0.2s ease;

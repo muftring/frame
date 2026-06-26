@@ -171,6 +171,8 @@ ipcMain.handle('file:updatePublished', (_, fileId, destinations) =>
 ipcMain.handle('file:listByGroup', (_, groupId) => sessionStore.fileListByGroup(groupId))
 ipcMain.handle('file:listBySession', (_, sessionId, filters) =>
   sessionStore.fileListBySession(sessionId, filters))
+ipcMain.handle('file:getByPath', (_, filePath) => sessionStore.fileGetByPath(filePath))
+ipcMain.handle('file:setRating', (_, fileId, rating) => sessionStore.fileSetRating(fileId, rating))
 
 let _store = null
 async function getStore() {
