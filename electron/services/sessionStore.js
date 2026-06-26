@@ -66,7 +66,40 @@ function initSchema() {
       publish_complete  INTEGER DEFAULT 0,
       last_file_id      INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS smart_albums (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      scope       TEXT DEFAULT 'global',
+      session_id  INTEGER,
+      rules       TEXT NOT NULL,
+      sort_by     TEXT DEFAULT 'exif_ts',
+      sort_dir    TEXT DEFAULT 'asc',
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    );
   `)
+  seedDefaultAlbums()
+}
+
+function seedDefaultAlbums() {
+  const count = db.prepare('SELECT COUNT(*) AS cnt FROM smart_albums').get().cnt
+  if (count > 0) return
+  const now = Date.now()
+  const ins = db.prepare(
+    'INSERT INTO smart_albums (name, scope, rules, sort_by, sort_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  )
+  const defaults = [
+    { name: 'All Keepers',      rules: [{ field: 'status',  operator: 'eq',           value: 'kept'    }] },
+    { name: 'Unpublished',      rules: [{ field: 'status',  operator: 'eq',           value: 'kept'    },
+                                        { field: 'published_to', operator: 'eq',       value: '[]'      }] },
+    { name: '5 Stars',          rules: [{ field: 'rating',  operator: 'gte',          value: 5         }] },
+    { name: 'This Week',        rules: [{ field: 'exif_ts', operator: 'in_last_days', value: 7         }] },
+    { name: 'Recently Deleted', rules: [{ field: 'status',  operator: 'eq',           value: 'deleted' }] },
+  ]
+  for (const d of defaults) {
+    ins.run(d.name, 'global', JSON.stringify(d.rules), 'exif_ts', 'asc', now, now)
+  }
 }
 
 // --- sessions ---
@@ -346,6 +379,208 @@ function fileListBySession(sessionId, filters = {}) {
   }
 }
 
+// --- smart albums ---
+
+// Whitelists prevent SQL injection when building dynamic WHERE clauses.
+const ALLOWED_RULE_FIELDS = new Set([
+  'status', 'rating', 'exif_ts', 'filename',
+  'session_id', 'group_id', 'published_to', 'size_bytes'
+])
+
+const ALLOWED_SORT_COLS = new Set(['exif_ts', 'filename', 'rating'])
+
+// Returns { sql, params } for a rules array (all rules ANDed together).
+function buildWhereClause(rules) {
+  const conditions = []
+  const params = []
+
+  for (const rule of rules) {
+    if (!ALLOWED_RULE_FIELDS.has(rule.field)) continue
+
+    const col = rule.field
+
+    switch (rule.operator) {
+      case 'eq':           conditions.push(`${col} = ?`);         params.push(rule.value); break
+      case 'neq':          conditions.push(`${col} != ?`);        params.push(rule.value); break
+      case 'gt':           conditions.push(`${col} > ?`);         params.push(rule.value); break
+      case 'lt':           conditions.push(`${col} < ?`);         params.push(rule.value); break
+      case 'gte':          conditions.push(`${col} >= ?`);        params.push(rule.value); break
+      case 'lte':          conditions.push(`${col} <= ?`);        params.push(rule.value); break
+      case 'contains':     conditions.push(`${col} LIKE ?`);      params.push('%' + rule.value + '%'); break
+      case 'not_contains': conditions.push(`${col} NOT LIKE ?`);  params.push('%' + rule.value + '%'); break
+      case 'in_last_days':
+        // exif_ts is stored as Unix ms; strftime('%s','now') returns Unix seconds.
+        conditions.push(`${col} >= (CAST(strftime('%s','now') AS INTEGER) - ? * 86400) * 1000`)
+        params.push(rule.value)
+        break
+      default: break
+    }
+  }
+
+  return conditions.length
+    ? { sql: conditions.join(' AND '), params }
+    : { sql: '1=1', params: [] }
+}
+
+// Internal helper used by albumGet and albumResolveFiles.
+function _resolveFiles(album, db) {
+  let rules = []
+  try { rules = JSON.parse(album.rules) } catch {}
+
+  const { sql: rulesSql, params: rulesParams } = buildWhereClause(rules)
+
+  const scopeParts = []
+  const scopeParams = []
+  if (album.scope === 'session' && album.session_id) {
+    scopeParts.push('session_id = ?')
+    scopeParams.push(album.session_id)
+  }
+
+  const whereParts = [...scopeParts, rulesSql]
+  const allParams  = [...scopeParams, ...rulesParams]
+
+  const sortCol = ALLOWED_SORT_COLS.has(album.sort_by) ? album.sort_by : 'exif_ts'
+  const sortDir = album.sort_dir === 'desc' ? 'DESC' : 'ASC'
+
+  return db.prepare(
+    `SELECT * FROM files WHERE ${whereParts.join(' AND ')} ORDER BY ${sortCol} ${sortDir}, filename ASC`
+  ).all(...allParams)
+}
+
+// Returns file count without fetching rows — used in albumList.
+function _countFiles(album, db) {
+  let rules = []
+  try { rules = JSON.parse(album.rules) } catch {}
+
+  const { sql: rulesSql, params: rulesParams } = buildWhereClause(rules)
+
+  const scopeParts = []
+  const scopeParams = []
+  if (album.scope === 'session' && album.session_id) {
+    scopeParts.push('session_id = ?')
+    scopeParams.push(album.session_id)
+  }
+
+  const whereParts = [...scopeParts, rulesSql]
+  const allParams  = [...scopeParams, ...rulesParams]
+
+  try {
+    return db.prepare(
+      `SELECT COUNT(*) AS cnt FROM files WHERE ${whereParts.join(' AND ')}`
+    ).get(...allParams).cnt
+  } catch {
+    return 0
+  }
+}
+
+function albumCreate(name, rules, scope, sessionId, sortBy, sortDir) {
+  try {
+    const db = getDb()
+    const now = Date.now()
+    const info = db.prepare(`
+      INSERT INTO smart_albums (name, scope, session_id, rules, sort_by, sort_dir, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      name,
+      scope    || 'global',
+      sessionId || null,
+      JSON.stringify(rules || []),
+      sortBy   || 'exif_ts',
+      sortDir  || 'asc',
+      now, now
+    )
+    return { id: info.lastInsertRowid }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function albumList(scope, sessionId) {
+  try {
+    const db = getDb()
+    const albums = scope === 'session' && sessionId
+      ? db.prepare(
+          `SELECT * FROM smart_albums WHERE scope = 'session' AND session_id = ? ORDER BY created_at ASC`
+        ).all(sessionId)
+      : db.prepare(
+          `SELECT * FROM smart_albums WHERE scope = 'global' ORDER BY created_at ASC`
+        ).all()
+
+    return albums.map(a => ({
+      id:        a.id,
+      name:      a.name,
+      scope:     a.scope,
+      sessionId: a.session_id,
+      sortBy:    a.sort_by,
+      sortDir:   a.sort_dir,
+      rules:     (() => { try { return JSON.parse(a.rules) } catch { return [] } })(),
+      fileCount: _countFiles(a, db)
+    }))
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function albumGet(albumId) {
+  try {
+    const db = getDb()
+    const album = db.prepare('SELECT * FROM smart_albums WHERE id = ?').get(albumId)
+    if (!album) return { error: 'Album not found' }
+    return {
+      album: {
+        ...album,
+        rules: (() => { try { return JSON.parse(album.rules) } catch { return [] } })()
+      },
+      files: _resolveFiles(album, db)
+    }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+const ALLOWED_ALBUM_FIELDS = ['name', 'rules', 'sort_by', 'sort_dir', 'scope', 'session_id']
+
+function albumUpdate(albumId, fields) {
+  try {
+    const db = getDb()
+    const sets = []
+    const values = []
+    for (const [key, val] of Object.entries(fields)) {
+      if (!ALLOWED_ALBUM_FIELDS.includes(key)) continue
+      sets.push(`${key} = ?`)
+      values.push(key === 'rules' ? JSON.stringify(val) : val)
+    }
+    if (sets.length === 0) return { success: true }
+    sets.push('updated_at = ?')
+    values.push(Date.now(), albumId)
+    db.prepare(`UPDATE smart_albums SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function albumDelete(albumId) {
+  try {
+    const db = getDb()
+    db.prepare('DELETE FROM smart_albums WHERE id = ?').run(albumId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function albumResolveFiles(albumId) {
+  try {
+    const db = getDb()
+    const album = db.prepare('SELECT * FROM smart_albums WHERE id = ?').get(albumId)
+    if (!album) return { error: 'Album not found' }
+    return _resolveFiles(album, db)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 module.exports = {
   sessionCreate,
   sessionList,
@@ -361,5 +596,11 @@ module.exports = {
   fileListByGroup,
   fileListBySession,
   fileGetByPath,
-  fileSetRating
+  fileSetRating,
+  albumCreate,
+  albumList,
+  albumGet,
+  albumUpdate,
+  albumDelete,
+  albumResolveFiles
 }

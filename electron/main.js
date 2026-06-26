@@ -174,6 +174,14 @@ ipcMain.handle('file:listBySession', (_, sessionId, filters) =>
 ipcMain.handle('file:getByPath', (_, filePath) => sessionStore.fileGetByPath(filePath))
 ipcMain.handle('file:setRating', (_, fileId, rating) => sessionStore.fileSetRating(fileId, rating))
 
+ipcMain.handle('album:create', (_, name, rules, scope, sessionId, sortBy, sortDir) =>
+  sessionStore.albumCreate(name, rules, scope, sessionId, sortBy, sortDir))
+ipcMain.handle('album:list', (_, scope, sessionId) => sessionStore.albumList(scope, sessionId))
+ipcMain.handle('album:get', (_, albumId) => sessionStore.albumGet(albumId))
+ipcMain.handle('album:update', (_, albumId, fields) => sessionStore.albumUpdate(albumId, fields))
+ipcMain.handle('album:delete', (_, albumId) => sessionStore.albumDelete(albumId))
+ipcMain.handle('album:resolveFiles', (_, albumId) => sessionStore.albumResolveFiles(albumId))
+
 let _store = null
 async function getStore() {
   if (!_store) {
