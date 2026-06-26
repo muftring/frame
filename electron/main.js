@@ -160,8 +160,11 @@ ipcMain.handle('session:archive', (_, sessionId) => sessionStore.sessionArchive(
 ipcMain.handle('session:updatePipeline', (_, sessionId, stage, complete) =>
   sessionStore.sessionUpdatePipeline(sessionId, stage, complete))
 
+ipcMain.handle('group:create', (_, sessionId, label, folderPath, fileCount, startTs, endTs, sortOrder) =>
+  sessionStore.groupCreate(sessionId, label, folderPath, fileCount, startTs, endTs, sortOrder))
 ipcMain.handle('group:rename', (_, groupId, newLabel) => sessionStore.groupRename(groupId, newLabel))
 ipcMain.handle('group:list', (_, sessionId) => sessionStore.groupList(sessionId))
+ipcMain.handle('pipeline:setLastFile', (_, sessionId, fileId) => sessionStore.pipelineSetLastFile(sessionId, fileId))
 
 ipcMain.handle('file:upsert', (_, sessionId, groupId, fileData) =>
   sessionStore.fileUpsert(sessionId, groupId, fileData))

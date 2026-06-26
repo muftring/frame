@@ -61,7 +61,9 @@
         <div class="picker-row">
           <label class="row-label">Source:</label>
           <button class="btn" @click="pickBatchSource">Select Folder</button>
-          <span v-if="batchSource" class="path-display">{{ batchSource }}</span>
+          <button v-if="session.id" class="btn" @click="loadSessionKeptFiles">Session Kept Files</button>
+          <span v-if="batchSource && !sessionInputFiles.length" class="path-display">{{ batchSource }}</span>
+          <span v-if="sessionInputFiles.length" class="path-display">{{ sessionInputFiles.length }} session files</span>
         </div>
         <div class="picker-row">
           <label class="row-label">Output:</label>
@@ -135,7 +137,7 @@
 <script>
 export default {
   name: 'ProcessModule',
-  inject: ['toast'],
+  inject: ['toast', 'session', 'updatePipeline'],
   data() {
     return {
       tools: { darktable: null, rawtherapee: null },
@@ -144,6 +146,7 @@ export default {
       batchSource: null,
       batchOutput: null,
       batchPreset: null,
+      sessionInputFiles: [],
       batchRunning: false,
       batchDone: false,
       batchError: null,
@@ -226,9 +229,19 @@ export default {
         await window.api.invoke('tools:openFolder', toolPath, this.openTarget)
       }
     },
+    async loadSessionKeptFiles() {
+      const files = await window.api.invoke('file:listBySession', this.session.id, { status: 'kept' })
+      if (!Array.isArray(files) || !files.length) {
+        this.toast('No kept files in this session', 'info')
+        return
+      }
+      this.sessionInputFiles = files.map(f => f.full_path)
+      this.batchSource = null
+      this.saveSettings()
+    },
     async pickBatchSource() {
       const folder = await window.api.invoke('dialog:openFolder')
-      if (folder) { this.batchSource = folder; this.saveSettings() }
+      if (folder) { this.sessionInputFiles = []; this.batchSource = folder; this.saveSettings() }
     },
     async pickBatchOutput() {
       const folder = await window.api.invoke('dialog:openFolder')
@@ -245,15 +258,20 @@ export default {
       this.batchProcessed = 0
       this.logLines = []
 
-      const files = await window.api.invoke('fs:scanFolder', this.batchSource)
-      if (files.error || !files.length) {
-        this.batchError = 'No image files found in source folder'
-        this.batchRunning = false
-        this.batchDone = true
-        return
+      let inputPaths
+      if (this.sessionInputFiles.length) {
+        inputPaths = this.sessionInputFiles
+      } else {
+        const files = await window.api.invoke('fs:scanFolder', this.batchSource)
+        if (files.error || !files.length) {
+          this.batchError = 'No image files found in source folder'
+          this.batchRunning = false
+          this.batchDone = true
+          return
+        }
+        inputPaths = files.map(f => f.path)
       }
 
-      const inputPaths = files.map(f => f.path)
       const preset = this.batchPreset || ''
 
       const result = await window.api.invoke(
@@ -268,6 +286,8 @@ export default {
       this.batchDone = true
       if (!result.success) {
         this.batchError = result.error
+      } else if (this.session?.id) {
+        this.updatePipeline('process', true)
       }
     },
     async openOutputFolder() {

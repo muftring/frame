@@ -85,7 +85,7 @@
 <script>
 export default {
   name: 'EditorModule',
-  inject: ['toast'],
+  inject: ['toast', 'session'],
   props: {
     imagePath: { type: String, default: null }
   },
@@ -102,6 +102,7 @@ export default {
       activePanel: 'rotate',
       undoStack: [],
       confirmOverwrite: false,
+      editOps: [],
 
       cropRect: null,
       cropDragging: false,
@@ -154,6 +155,7 @@ export default {
       this.workingPath = this.tempDir + '/editor-working.' + ext
       await window.api.invoke('fs:copyFile', filePath, this.workingPath)
       this.undoStack = []
+      this.editOps = []
       this.cropRect = null
       this.activePanel = 'rotate'
       await this.loadImage()
@@ -187,11 +189,27 @@ export default {
       const undoPath = this.undoStack.pop()
       await window.api.invoke('fs:copyFile', undoPath, this.workingPath)
       this.cropRect = null
+      if (this.editOps.length) this.editOps.pop()
       await this.loadImage()
     },
     async saveOriginal() {
       await window.api.invoke('fs:copyFile', this.workingPath, this.originalPath)
       this.confirmOverwrite = false
+      await this.persistEditHistory()
+    },
+    async persistEditHistory() {
+      if (!this.session?.id || !this.originalPath || !this.editOps.length) return
+      const rec = await window.api.invoke('file:getByPath', this.originalPath)
+      if (!rec || rec.error) return
+      let history = []
+      try { history = JSON.parse(rec.edit_history || '[]') } catch { /* empty */ }
+      history.push(...this.editOps)
+      await window.api.invoke('file:upsert', this.session.id, rec.group_id || null, {
+        full_path: this.originalPath,
+        filename: this.fileName,
+        edit_history: JSON.stringify(history)
+      })
+      this.editOps = []
     },
     async saveCopy() {
       const dest = await window.api.invoke('dialog:saveFile', this.originalPath)
@@ -211,6 +229,7 @@ export default {
       await this.pushUndo()
       const r = await window.api.invoke('img:rotate', this.workingPath, degrees, this.workingPath)
       if (r.error) this.toast(r.error, 'error')
+      else if (this.session?.id) this.editOps.push({ op: 'rotate', degrees, ts: Date.now() })
       this.cropRect = null
       await this.loadImage()
       this.operating = false
@@ -220,6 +239,7 @@ export default {
       await this.pushUndo()
       const r = await window.api.invoke('img:flip', this.workingPath, 'horizontal', this.workingPath)
       if (r.error) this.toast(r.error, 'error')
+      else if (this.session?.id) this.editOps.push({ op: 'flip', direction: 'horizontal', ts: Date.now() })
       this.cropRect = null
       await this.loadImage()
       this.operating = false
@@ -245,6 +265,7 @@ export default {
       if (region.width < 1 || region.height < 1) return
       await this.pushUndo()
       await window.api.invoke('img:crop', this.workingPath, region, this.workingPath)
+      if (this.session?.id) this.editOps.push({ op: 'crop', region: { ...region }, ts: Date.now() })
       this.cropRect = null
       await this.loadImage()
     },

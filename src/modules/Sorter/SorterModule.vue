@@ -2,19 +2,27 @@
   <div class="sorter">
     <!-- Toolbar -->
     <div class="toolbar">
-      <button class="btn" @click="openFolder">Open Folder</button>
-      <span v-if="folderPath" class="folder-name">{{ folderDisplayName }}</span>
+      <button v-if="!sessionMode" class="btn" @click="openFolder">Open Folder</button>
+      <span v-if="sessionMode" class="session-label">{{ session.name }}</span>
+      <span v-else-if="folderPath" class="folder-name">{{ folderDisplayName }}</span>
       <div class="toolbar-stats" v-if="images.length">
         <span>{{ images.length }} total</span>
         <span class="stat-sep">|</span>
         <span class="stat-kept">{{ keptCount }} kept</span>
         <span class="stat-sep">|</span>
-        <span class="stat-trashed">{{ trashedCount }} trashed</span>
+        <span class="stat-trashed">{{ trashedCount }} deleted</span>
       </div>
       <div class="toolbar-spacer"></div>
       <button v-if="images.length" class="btn" :class="{ active: trashPanelOpen }" @click="trashPanelOpen = !trashPanelOpen">
         Trash{{ trashedCount ? ' (' + trashedCount + ')' : '' }}
       </button>
+    </div>
+
+    <!-- Resume banner (session mode only) -->
+    <div v-if="showResumePrompt" class="resume-banner">
+      <span>Resume from where you left off?</span>
+      <button class="btn-sm" @click="doResume">Resume</button>
+      <button class="btn-sm" @click="showResumePrompt = false">Start from beginning</button>
     </div>
 
     <!-- Main area -->
@@ -45,11 +53,12 @@
             @error="handleImageError"
           />
           <div v-if="currentImage && currentImage.status === 'trashed'" class="trashed-overlay">
-            <span>Trashed</span>
+            <span>Deleted</span>
           </div>
         </div>
         <div class="viewer-info" v-if="currentImage">
           <span class="viewer-filename">{{ currentImage.name }}</span>
+          <span v-if="sessionMode && currentImage.groupLabel" class="viewer-group">{{ currentImage.groupLabel }}</span>
           <span class="viewer-progress-text">{{ currentIndex + 1 }} / {{ images.length }}</span>
         </div>
         <div class="viewer-progress-bar" v-if="images.length">
@@ -64,17 +73,17 @@
             <h4>Trash ({{ trashedCount }})</h4>
             <button class="btn-sm" @click="trashPanelOpen = false">Close</button>
           </div>
-          <div class="trash-actions" v-if="trashedCount">
+          <div class="trash-actions" v-if="trashedCount && !sessionMode">
             <button class="btn-sm" @click="restoreAll">Restore All</button>
             <button class="btn-sm btn-danger" @click="confirmEmptyTrash = true">Empty Trash</button>
           </div>
           <div class="trash-list">
             <div v-for="img in trashedImages" :key="img.path" class="trash-item">
               <span class="trash-item-name">{{ img.name }}</span>
-              <button class="btn-sm" @click="restore(img)">Restore</button>
+              <button v-if="!sessionMode || img.trashedPath" class="btn-sm" @click="restore(img)">Restore</button>
             </div>
           </div>
-          <div v-if="!trashedCount" class="trash-empty">No trashed images</div>
+          <div v-if="!trashedCount" class="trash-empty">No deleted images</div>
         </div>
       </transition>
     </div>
@@ -87,7 +96,8 @@
         <circle cx="24" cy="31" r="5" />
       </svg>
       <div class="empty-title">No images loaded</div>
-      <div class="empty-hint">Open a folder to start sorting photos</div>
+      <div class="empty-hint" v-if="sessionMode">No files found in this session</div>
+      <div class="empty-hint" v-else>Open a folder to start sorting photos</div>
     </div>
     <div class="empty-state-full" v-if="loading">
       <div class="spinner"></div>
@@ -100,6 +110,11 @@
       <button class="btn action-btn keep-btn" @click="keep">Keep (K)</button>
       <button class="btn action-btn delete-btn" @click="doTrash">Delete (D)</button>
       <button class="btn action-btn" @click="next" :disabled="currentIndex >= images.length - 1">Next</button>
+      <button
+        v-if="sessionMode && allReviewed && !sortAlreadyComplete"
+        class="btn action-btn complete-btn"
+        @click="markSortComplete"
+      >Mark Sort Complete</button>
     </div>
 
     <!-- Confirm empty trash modal -->
@@ -119,7 +134,7 @@
 <script>
 export default {
   name: 'SorterModule',
-  inject: ['toast'],
+  inject: ['toast', 'session', 'updatePipeline'],
   props: {
     initialFolder: { type: String, default: null }
   },
@@ -131,10 +146,15 @@ export default {
       currentIndex: 0,
       loading: false,
       trashPanelOpen: false,
-      confirmEmptyTrash: false
+      confirmEmptyTrash: false,
+      showResumePrompt: false,
+      resumeFileId: null
     }
   },
   computed: {
+    sessionMode() {
+      return !!this.session?.id
+    },
     currentImage() {
       return this.images[this.currentIndex] || null
     },
@@ -162,6 +182,12 @@ export default {
       if (!this.folderPath) return ''
       const parts = this.folderPath.replace(/\\/g, '/').split('/')
       return parts[parts.length - 1] || this.folderPath
+    },
+    allReviewed() {
+      return this.images.length > 0 && !this.images.some(i => i.status === 'pending')
+    },
+    sortAlreadyComplete() {
+      return !!this.session?.pipelineState?.sort_complete
     }
   },
   watch: {
@@ -172,19 +198,78 @@ export default {
         const active = el.querySelector('.film-thumb.active')
         if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       })
+      this.scheduleLastFileUpdate()
     }
   },
-  mounted() {
+  async mounted() {
     this._keyHandler = this.handleKeydown.bind(this)
     window.addEventListener('keydown', this._keyHandler)
-    if (this.initialFolder) {
-      this.loadFolder(this.initialFolder)
+    if (this.session?.id) {
+      await this.loadSessionFiles()
+    } else if (this.initialFolder) {
+      await this.loadFolder(this.initialFolder)
     }
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this._keyHandler)
+    clearTimeout(this._lastFileTimer)
   },
   methods: {
+    async loadSessionFiles() {
+      this.loading = true
+      this.images = []
+      const groups = await window.api.invoke('group:list', this.session.id)
+      if (!Array.isArray(groups)) { this.loading = false; return }
+
+      const allFiles = []
+      for (const group of groups) {
+        const files = await window.api.invoke('file:listByGroup', group.id)
+        if (Array.isArray(files)) {
+          for (const f of files) {
+            allFiles.push({
+              fileId: f.id,
+              name: f.filename,
+              path: f.full_path,
+              size: f.size_bytes || 0,
+              thumbnail: null,
+              status: f.status === 'deleted' ? 'trashed' : (f.status === 'kept' ? 'kept' : 'pending'),
+              trashedPath: null,
+              groupId: group.id,
+              groupLabel: group.label
+            })
+          }
+        }
+      }
+
+      this.images = allFiles
+      this.loading = false
+
+      const lastFileId = this.session.pipelineState?.last_file_id
+      if (lastFileId) {
+        this.resumeFileId = lastFileId
+        this.showResumePrompt = true
+      }
+
+      this.loadThumbnails()
+    },
+    doResume() {
+      const idx = this.images.findIndex(i => i.fileId === this.resumeFileId)
+      if (idx >= 0) this.currentIndex = idx
+      this.showResumePrompt = false
+    },
+    async markSortComplete() {
+      await this.updatePipeline('sort', true)
+      this.toast('Sort complete! All files reviewed.', 'success')
+    },
+    scheduleLastFileUpdate() {
+      clearTimeout(this._lastFileTimer)
+      if (!this.sessionMode) return
+      const img = this.currentImage
+      if (!img?.fileId) return
+      this._lastFileTimer = setTimeout(() => {
+        window.api.invoke('pipeline:setLastFile', this.session.id, img.fileId)
+      }, 500)
+    },
     async openFolder() {
       const folder = await window.api.invoke('dialog:openFolder')
       if (folder) await this.loadFolder(folder)
@@ -204,12 +289,15 @@ export default {
       }
 
       this.images = files.map(f => ({
+        fileId: null,
         name: f.name,
         path: f.path,
         size: f.size,
         thumbnail: null,
         status: 'pending',
-        trashedPath: null
+        trashedPath: null,
+        groupId: null,
+        groupLabel: null
       }))
 
       this.loading = false
@@ -225,6 +313,9 @@ export default {
     keep() {
       if (!this.currentImage) return
       this.currentImage.status = 'kept'
+      if (this.sessionMode && this.currentImage.fileId) {
+        window.api.invoke('file:updateStatus', this.currentImage.fileId, 'kept')
+      }
       this.advanceNext()
     },
     async doTrash() {
@@ -232,13 +323,18 @@ export default {
         this.advanceNext()
         return
       }
-      const trashFolder = this.folderPath + '/.frame-trash'
+      const trashFolder = this.folderPath
+        ? this.folderPath + '/.frame-trash'
+        : this.currentImage.path.replace(/\/[^/]+$/, '') + '/.frame-trash'
       const result = await window.api.invoke('fs:moveToTrash', this.currentImage.path, trashFolder)
       if (result.success) {
         this.currentImage.status = 'trashed'
         this.currentImage.trashedPath = result.trashedPath
       } else if (result.error) {
         this.toast(result.error, 'error')
+      }
+      if (this.sessionMode && this.currentImage.fileId) {
+        window.api.invoke('file:updateStatus', this.currentImage.fileId, 'deleted')
       }
       this.advanceNext()
     },
@@ -248,6 +344,9 @@ export default {
       if (result.success) {
         img.status = 'pending'
         img.trashedPath = null
+        if (this.sessionMode && img.fileId) {
+          window.api.invoke('file:updateStatus', img.fileId, 'unreviewed')
+        }
       }
     },
     async restoreAll() {
@@ -320,6 +419,12 @@ export default {
   font-family: 'SF Mono', 'Menlo', monospace;
 }
 
+.session-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .toolbar-stats {
   display: flex;
   align-items: center;
@@ -332,6 +437,19 @@ export default {
 .stat-kept { color: #66bb6a; }
 .stat-trashed { color: #ef5350; }
 .toolbar-spacer { flex: 1; }
+
+/* Resume banner */
+.resume-banner {
+  background: rgba(201, 168, 76, 0.1);
+  border-bottom: 1px solid rgba(201, 168, 76, 0.25);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
 
 /* Buttons */
 .btn {
@@ -496,6 +614,12 @@ export default {
   font-family: 'SF Mono', 'Menlo', monospace;
 }
 
+.viewer-group {
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
 .viewer-progress-text {
   font-size: 12px;
   color: var(--text2);
@@ -545,6 +669,13 @@ export default {
   color: #ef5350;
 }
 .delete-btn:hover { background: rgba(239, 83, 80, 0.25); }
+
+.complete-btn {
+  background: rgba(201, 168, 76, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.complete-btn:hover { background: rgba(201, 168, 76, 0.25); }
 
 /* Trash panel */
 .trash-panel {
@@ -624,13 +755,31 @@ export default {
 }
 
 /* Empty state */
-.empty-state {
+.empty-state-full {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   color: var(--text2);
+}
+
+.empty-state-full svg {
+  width: 48px;
+  height: 48px;
+  opacity: 0.2;
+}
+
+.empty-title {
   font-size: 15px;
+  color: var(--text);
+  opacity: 0.5;
+}
+
+.empty-hint {
+  font-size: 12px;
+  opacity: 0.4;
 }
 
 /* Modal */
@@ -672,4 +821,14 @@ export default {
   justify-content: flex-end;
   gap: 10px;
 }
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

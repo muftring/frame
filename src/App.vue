@@ -154,7 +154,9 @@ export default {
   provide() {
     return {
       appSettings: this.settings,
-      toast: this.addToast
+      toast: this.addToast,
+      session: this.sessionProxy,
+      updatePipeline: this.handlePipelineUpdate
     }
   },
   data() {
@@ -166,6 +168,7 @@ export default {
       showSettings: false,
       settingsReady: false,
       activeSession: null,
+      sessionProxy: { id: null, name: null, currentStage: null, pipelineState: {} },
       pipelineStages: PIPELINE_STAGES,
       toasts: [],
       settings: {
@@ -236,24 +239,59 @@ export default {
         processComplete: false,
         publishComplete: false,
       }
+      Object.assign(this.sessionProxy, {
+        id: session.id,
+        name: session.name,
+        currentStage: 'triage',
+        pipelineState: {}
+      })
       this.currentModule = 'triage'
       this.moduleData = null
       this.showSettings = false
     },
-    handleSessionResume(session) {
+    async handleSessionResume(session) {
+      const data = await window.api.invoke('session:get', session.id)
+      const pipeline = data?.pipelineState || {}
       this.activeSession = {
         id: session.id,
         name: session.name,
         currentStage: session.currentStage || 'triage',
-        triageComplete: !!session.triageComplete,
-        sortComplete: !!session.sortComplete,
-        editComplete: !!session.editComplete,
-        processComplete: !!session.processComplete,
-        publishComplete: !!session.publishComplete,
+        triageComplete: !!pipeline.triage_complete,
+        sortComplete: !!pipeline.sort_complete,
+        editComplete: !!pipeline.edit_complete,
+        processComplete: !!pipeline.process_complete,
+        publishComplete: !!pipeline.publish_complete,
       }
+      Object.assign(this.sessionProxy, {
+        id: session.id,
+        name: session.name,
+        currentStage: session.currentStage || 'triage',
+        pipelineState: pipeline
+      })
       this.currentModule = STAGE_MODULE[session.currentStage] || 'triage'
       this.moduleData = null
       this.showSettings = false
+    },
+    async handlePipelineUpdate(stage, complete) {
+      if (!this.sessionProxy.id) return
+      const sessionId = this.sessionProxy.id
+      await window.api.invoke('session:updatePipeline', sessionId, stage, complete ? 1 : 0)
+      const camelMap = {
+        triage: 'triageComplete', sort: 'sortComplete', edit: 'editComplete',
+        process: 'processComplete', publish: 'publishComplete'
+      }
+      const snakeMap = {
+        triage: 'triage_complete', sort: 'sort_complete', edit: 'edit_complete',
+        process: 'process_complete', publish: 'publish_complete'
+      }
+      const camelKey = camelMap[stage]
+      if (camelKey && this.activeSession) {
+        this.activeSession = { ...this.activeSession, [camelKey]: complete }
+      }
+      const snakeKey = snakeMap[stage]
+      if (snakeKey) {
+        this.sessionProxy.pipelineState[snakeKey] = complete ? 1 : 0
+      }
     },
     navigateToStage(stage) {
       this.currentModule = stage.module

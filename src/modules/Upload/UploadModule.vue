@@ -91,6 +91,7 @@
           <div class="source-actions">
             <button class="btn" @click="pickFiles">Select Files</button>
             <button class="btn" @click="pickFolder">Select Folder</button>
+            <button v-if="session.id" class="btn" @click="loadSessionKeptFiles">Session Kept Files</button>
             <button v-if="selectedFiles.length" class="btn-sm" @click="clearFiles">Clear</button>
           </div>
           <div v-if="selectedFiles.length" class="file-summary">
@@ -159,7 +160,7 @@
 <script>
 export default {
   name: 'UploadModule',
-  inject: ['toast', 'appSettings'],
+  inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
   data() {
     return {
       providers: {},
@@ -243,6 +244,15 @@ export default {
       this.selectedFiles = files.map(f => f.path)
       this.sourceFolder = folder
     },
+    async loadSessionKeptFiles() {
+      const files = await window.api.invoke('file:listBySession', this.session.id, { status: 'kept' })
+      if (!Array.isArray(files) || !files.length) {
+        this.toast('No kept files in this session', 'info')
+        return
+      }
+      this.selectedFiles = files.map(f => f.full_path)
+      this.sourceFolder = null
+    },
     clearFiles() {
       this.selectedFiles = []
       this.sourceFolder = null
@@ -275,9 +285,33 @@ export default {
         this.toast('Upload failed: ' + result.error, 'error')
       } else {
         this.toast(`Uploaded ${result.uploaded} files`, 'success')
+        if (this.session?.id) {
+          await this.recordPublishedFiles(this.selectedFiles)
+        }
       }
 
       this.saveSettings()
+    },
+    async recordPublishedFiles(paths) {
+      const providerName = this.selectedProvider === 'archivault' ? 'ArchiVault' : 'iCloud Photos'
+      for (const path of paths) {
+        const rec = await window.api.invoke('file:getByPath', path)
+        if (!rec || rec.error) continue
+        let published = []
+        try { published = JSON.parse(rec.published_to || '[]') } catch { /* empty */ }
+        if (!published.includes(providerName)) {
+          await window.api.invoke('file:updatePublished', rec.id, [...published, providerName])
+        }
+      }
+      const keptFiles = await window.api.invoke('file:listBySession', this.session.id, { status: 'kept' })
+      if (!Array.isArray(keptFiles) || !keptFiles.length) return
+      const allPublished = keptFiles.every(f => {
+        try { return JSON.parse(f.published_to || '[]').length > 0 } catch { return false }
+      })
+      if (allPublished) {
+        this.updatePipeline('publish', true)
+        this.toast('Session complete! All kept files published.', 'success')
+      }
     },
     basename(p) {
       return p.replace(/\\/g, '/').split('/').pop()

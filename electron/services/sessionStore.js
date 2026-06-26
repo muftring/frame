@@ -221,6 +221,29 @@ function sessionUpdatePipeline(sessionId, stage, complete) {
 
 // --- event_groups ---
 
+function groupCreate(sessionId, label, folderPath, fileCount, startTs, endTs, sortOrder) {
+  try {
+    const db = getDb()
+    const info = db.prepare(`
+      INSERT INTO event_groups (session_id, label, folder_path, file_count, start_ts, end_ts, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(sessionId, label, folderPath, fileCount || 0, startTs || null, endTs || null, sortOrder || 0)
+    return { id: info.lastInsertRowid }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function pipelineSetLastFile(sessionId, fileId) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE pipeline_state SET last_file_id = ? WHERE session_id = ?').run(fileId, sessionId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function groupRename(groupId, newLabel) {
   try {
     const db = getDb()
@@ -604,6 +627,8 @@ module.exports = {
   sessionUpdate,
   sessionArchive,
   sessionUpdatePipeline,
+  groupCreate,
+  pipelineSetLastFile,
   groupRename,
   groupList,
   fileUpsert,

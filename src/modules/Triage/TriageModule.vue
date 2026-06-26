@@ -110,9 +110,12 @@
           <div v-for="result in copyResults" :key="result.folder" class="result-row">
             {{ result.folder }} — {{ result.count }} files
           </div>
-          <button class="btn btn-accent" style="margin-top: 16px" @click="$emit('navigate', 'sorter', firstEventPath)">
+          <button v-if="!session.id" class="btn btn-accent" style="margin-top: 16px" @click="$emit('navigate', 'sorter', firstEventPath)">
             Next: open in Sorter
           </button>
+          <p v-if="session.id" style="margin-top: 14px; font-size: 13px; color: var(--accent)">
+            Registering with session… navigating to Sorter
+          </p>
         </div>
       </div>
     </section>
@@ -122,7 +125,7 @@
 <script>
 export default {
   name: 'TriageModule',
-  inject: ['toast', 'appSettings'],
+  inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
   emits: ['navigate'],
   data() {
     return {
@@ -294,6 +297,34 @@ export default {
 
       this.copying = false
       this.copyComplete = true
+
+      if (this.session?.id) {
+        await this.registerInSession()
+      }
+    },
+    async registerInSession() {
+      const sessionId = this.session.id
+      for (let i = 0; i < this.groups.length; i++) {
+        const group = this.groups[i]
+        const destDir = this.destFolder + '/' + group.label
+        const startTs = group.startTime ? new Date(group.startTime).getTime() : null
+        const endTs = group.endTime ? new Date(group.endTime).getTime() : null
+        const gr = await window.api.invoke('group:create', sessionId, group.label, destDir, group.fileCount, startTs, endTs, i)
+        const groupId = gr?.id
+        if (!groupId) continue
+        for (const file of group.files) {
+          await window.api.invoke('file:upsert', sessionId, groupId, {
+            filename: file.name,
+            full_path: destDir + '/' + file.name,
+            original_path: file.path,
+            size_bytes: file.size || null,
+            exif_ts: file.timestamp ? new Date(file.timestamp).getTime() : null,
+            status: 'unreviewed'
+          })
+        }
+      }
+      this.updatePipeline('triage', true)
+      setTimeout(() => this.$emit('navigate', 'sorter', null), 1200)
     },
     formatDate(iso) {
       return new Date(iso).toLocaleDateString('en-US', {
