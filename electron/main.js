@@ -180,6 +180,7 @@ ipcMain.handle('album:list', (_, scope, sessionId) => sessionStore.albumList(sco
 ipcMain.handle('album:get', (_, albumId) => sessionStore.albumGet(albumId))
 ipcMain.handle('album:update', (_, albumId, fields) => sessionStore.albumUpdate(albumId, fields))
 ipcMain.handle('album:delete', (_, albumId) => sessionStore.albumDelete(albumId))
+ipcMain.handle('album:preview', (_, rules, scope, sessionId) => sessionStore.albumPreview(rules, scope, sessionId))
 ipcMain.handle('album:resolveFiles', (_, albumId) => sessionStore.albumResolveFiles(albumId))
 
 let _store = null

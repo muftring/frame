@@ -570,6 +570,22 @@ function albumDelete(albumId) {
   }
 }
 
+function albumPreview(rules, scope, sessionId) {
+  try {
+    const db = getDb()
+    const fakeAlbum = {
+      rules: JSON.stringify(rules || []),
+      scope: scope || 'global',
+      session_id: sessionId || null,
+      sort_by: 'exif_ts',
+      sort_dir: 'asc'
+    }
+    return { count: _countFiles(fakeAlbum, db) }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function albumResolveFiles(albumId) {
   try {
     const db = getDb()
@@ -602,5 +618,6 @@ module.exports = {
   albumGet,
   albumUpdate,
   albumDelete,
+  albumPreview,
   albumResolveFiles
 }

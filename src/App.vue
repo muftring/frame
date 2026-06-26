@@ -91,7 +91,7 @@
         />
         <TriageModule v-else-if="currentModule === 'triage'" @navigate="handleNavigate" />
         <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
-        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" @update-state="galleryState = $event" />
+        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" @update-state="galleryState = $event" />
         <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
         <ProcessModule v-else-if="currentModule === 'process'" />
         <UploadModule v-else-if="currentModule === 'upload'" />

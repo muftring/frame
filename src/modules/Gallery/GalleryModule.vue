@@ -1,45 +1,73 @@
 <template>
   <div class="gallery">
+
+    <!-- Toolbar -->
     <div class="gallery-toolbar">
       <button class="btn" @click="openFolder">Open Folder</button>
-      <span v-if="folderPath" class="folder-name">{{ folderDisplayName }}</span>
+      <span v-if="activeLabel" class="folder-name">{{ activeLabel }}</span>
+      <span v-else-if="folderPath" class="folder-name">{{ folderDisplayName }}</span>
       <span v-if="images.length" class="image-count">{{ images.length }} images</span>
     </div>
 
-    <div v-if="!images.length && !loading" class="empty-state-full">
-      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="4" y="4" width="16" height="16" rx="2" />
-        <rect x="28" y="4" width="16" height="16" rx="2" />
-        <rect x="4" y="28" width="16" height="16" rx="2" />
-        <rect x="28" y="28" width="16" height="16" rx="2" />
-      </svg>
-      <div class="empty-title">No folder selected</div>
-      <div class="empty-hint">Open a folder to browse your photos</div>
-    </div>
-    <div v-if="loading" class="empty-state-full">
-      <div class="spinner"></div>
-      <div class="empty-hint">Loading images...</div>
-    </div>
+    <!-- Body: sidebar + main -->
+    <div class="gallery-body">
 
-    <div class="grid-wrap" ref="gridWrap" @scroll="saveScrollPos">
-      <div class="grid">
-        <div
-          v-for="(img, i) in images"
-          :key="img.path"
-          class="grid-cell"
-          :data-index="i"
-          ref="cells"
-          @click="openViewer(i)"
-          @contextmenu.prevent="showContextMenu($event, img)"
-        >
-          <img v-if="img.thumbnail" :src="img.thumbnail" class="grid-thumb" />
-          <div v-else class="grid-placeholder skeleton"></div>
-          <div class="grid-label">{{ img.name }}</div>
+      <SmartAlbumsPanel
+        :active-session="activeSession"
+        :selected-source="selectedSource"
+        @select="handleSourceSelect"
+      />
+
+      <div class="gallery-main">
+
+        <div v-if="!images.length && !loading" class="empty-state-full">
+          <template v-if="selectedSource">
+            <div class="empty-title">No files found</div>
+            <div class="empty-hint">No files match this album's rules</div>
+          </template>
+          <template v-else-if="folderPath">
+            <div class="empty-title">No images in folder</div>
+            <div class="empty-hint">Try a different folder</div>
+          </template>
+          <template v-else>
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <rect x="28" y="4" width="16" height="16" rx="2" />
+              <rect x="4" y="28" width="16" height="16" rx="2" />
+              <rect x="28" y="28" width="16" height="16" rx="2" />
+            </svg>
+            <div class="empty-title">Gallery</div>
+            <div class="empty-hint">Select a smart album or open a folder</div>
+          </template>
         </div>
+
+        <div v-if="loading" class="empty-state-full">
+          <div class="spinner"></div>
+          <div class="empty-hint">Loading images…</div>
+        </div>
+
+        <div class="grid-wrap" ref="gridWrap" @scroll="saveScrollPos">
+          <div class="grid">
+            <div
+              v-for="(img, i) in images"
+              :key="img.path"
+              class="grid-cell"
+              :data-index="i"
+              ref="cells"
+              @click="openViewer(i)"
+              @contextmenu.prevent="showContextMenu($event, img)"
+            >
+              <img v-if="img.thumbnail" :src="img.thumbnail" class="grid-thumb" />
+              <div v-else class="grid-placeholder skeleton"></div>
+              <div class="grid-label">{{ img.name }}</div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
-    <!-- Context menu -->
+    <!-- Context menu (fixed, escapes all overflow) -->
     <div v-if="ctxMenu" class="ctx-menu" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
       <div v-if="installedTools.darktable" class="ctx-item" @click="openInTool('darktable')">Open in Darktable</div>
       <div v-if="installedTools.rawtherapee" class="ctx-item" @click="openInTool('rawtherapee')">Open in RawTherapee</div>
@@ -47,7 +75,7 @@
     </div>
     <div v-if="ctxMenu" class="ctx-backdrop" @click="ctxMenu = null"></div>
 
-    <!-- Image viewer -->
+    <!-- Image viewer (fixed overlay) -->
     <ImageViewer
       :visible="viewerOpen"
       :image="viewerImage"
@@ -57,18 +85,21 @@
       @prev="viewerPrev"
       @next="viewerNext"
     />
+
   </div>
 </template>
 
 <script>
 import ImageViewer from './ImageViewer.vue'
+import SmartAlbumsPanel from './SmartAlbumsPanel.vue'
 
 export default {
   name: 'GalleryModule',
   inject: ['toast'],
-  components: { ImageViewer },
+  components: { ImageViewer, SmartAlbumsPanel },
   props: {
-    sessionState: { type: Object, default: null }
+    sessionState:  { type: Object, default: null },
+    activeSession: { type: Object, default: null }
   },
   emits: ['update-state'],
   data() {
@@ -82,7 +113,9 @@ export default {
       ctxImage: null,
       installedTools: { darktable: null, rawtherapee: null },
       observer: null,
-      savedScrollTop: 0
+      savedScrollTop: 0,
+      selectedSource: null,
+      selectedSourceLabel: null
     }
   },
   computed: {
@@ -93,13 +126,29 @@ export default {
     },
     viewerImage() {
       return this.images[this.viewerIndex] || {}
+    },
+    activeLabel() {
+      if (!this.selectedSource) return null
+      if (this.selectedSourceLabel) return this.selectedSourceLabel
+      switch (this.selectedSource.type) {
+        case 'session-all': return 'All Session Files'
+        case 'session-status': {
+          const m = { kept: 'Kept', deleted: 'Deleted', unreviewed: 'Unreviewed', published: 'Published' }
+          return m[this.selectedSource.status] || this.selectedSource.status
+        }
+        default: return 'Smart Album'
+      }
     }
   },
   async mounted() {
     const tools = await window.api.invoke('tools:findInstalled')
     this.installedTools = tools
 
-    if (this.sessionState) {
+    const lastSource = await window.api.invoke('store:get', 'galleryLastSource')
+    if (lastSource?.albumId) {
+      this.selectedSource = lastSource
+      await this.loadSource(lastSource)
+    } else if (this.sessionState) {
       this.folderPath = this.sessionState.folderPath
       this.savedScrollTop = this.sessionState.scrollTop || 0
       this.viewerIndex = this.sessionState.lastViewed || 0
@@ -111,10 +160,63 @@ export default {
     this.emitState()
   },
   methods: {
+    async handleSourceSelect(source, label) {
+      this.selectedSource = source
+      this.selectedSourceLabel = label || null
+
+      if (!source) {
+        window.api.invoke('store:set', 'galleryLastSource', null)
+        return
+      }
+
+      if (source.type === 'album') {
+        window.api.invoke('store:set', 'galleryLastSource', { type: 'album', albumId: source.albumId })
+      } else {
+        window.api.invoke('store:set', 'galleryLastSource', null)
+      }
+
+      await this.loadSource(source)
+    },
+
+    async loadSource(source) {
+      this.loading = true
+      this.images = []
+      this.folderPath = null
+
+      let dbFiles = []
+      if (source.type === 'album') {
+        dbFiles = await window.api.invoke('album:resolveFiles', source.albumId)
+      } else if (source.type === 'session-all') {
+        dbFiles = await window.api.invoke('file:listBySession', source.sessionId, {})
+      } else if (source.type === 'session-status') {
+        dbFiles = await window.api.invoke('file:listBySession', source.sessionId, { status: source.status })
+      } else if (source.type === 'session-group') {
+        dbFiles = await window.api.invoke('file:listByGroup', source.groupId)
+      }
+
+      if (Array.isArray(dbFiles)) {
+        this.images = dbFiles.map(f => ({
+          name: f.filename,
+          path: f.full_path,
+          size: f.size_bytes || 0,
+          thumbnail: null
+        }))
+      }
+
+      this.loading = false
+      this.$nextTick(() => this.setupObserver())
+    },
+
     async openFolder() {
       const folder = await window.api.invoke('dialog:openFolder')
-      if (folder) await this.loadFolder(folder, false)
+      if (folder) {
+        this.selectedSource = null
+        this.selectedSourceLabel = null
+        window.api.invoke('store:set', 'galleryLastSource', null)
+        await this.loadFolder(folder, false)
+      }
     },
+
     async loadFolder(folderPath, restoring) {
       this.loading = true
       this.folderPath = folderPath
@@ -142,6 +244,7 @@ export default {
         }
       })
     },
+
     setupObserver() {
       if (this.observer) this.observer.disconnect()
 
@@ -150,7 +253,7 @@ export default {
           for (const entry of entries) {
             if (!entry.isIntersecting) continue
             const idx = parseInt(entry.target.dataset.index, 10)
-            if (isNaN(idx) || this.images[idx].thumbnail) continue
+            if (isNaN(idx) || this.images[idx]?.thumbnail) continue
             this.loadThumb(idx)
             this.observer.unobserve(entry.target)
           }
@@ -161,32 +264,27 @@ export default {
       const cells = this.$refs.cells
       if (cells) {
         const arr = Array.isArray(cells) ? cells : [cells]
-        for (const cell of arr) {
-          this.observer.observe(cell)
-        }
+        for (const cell of arr) this.observer.observe(cell)
       }
     },
+
     async loadThumb(idx) {
-      const thumb = await window.api.invoke('img:thumbnail', this.images[idx].path, { width: 180, height: 135 })
-      this.images[idx].thumbnail = thumb
+      const img = this.images[idx]
+      if (!img) return
+      const thumb = await window.api.invoke('img:thumbnail', img.path, { width: 180, height: 135 })
+      if (this.images[idx]) this.images[idx].thumbnail = thumb
     },
-    openViewer(i) {
-      this.viewerIndex = i
-      this.viewerOpen = true
-    },
-    closeViewer() {
-      this.viewerOpen = false
-    },
-    viewerPrev() {
-      if (this.viewerIndex > 0) this.viewerIndex--
-    },
-    viewerNext() {
-      if (this.viewerIndex < this.images.length - 1) this.viewerIndex++
-    },
+
+    openViewer(i) { this.viewerIndex = i; this.viewerOpen = true },
+    closeViewer()  { this.viewerOpen = false },
+    viewerPrev()   { if (this.viewerIndex > 0) this.viewerIndex-- },
+    viewerNext()   { if (this.viewerIndex < this.images.length - 1) this.viewerIndex++ },
+
     showContextMenu(e, img) {
       this.ctxImage = img
       this.ctxMenu = { x: e.clientX, y: e.clientY }
     },
+
     async openInTool(tool) {
       const toolPath = this.installedTools[tool]
       if (toolPath && this.ctxImage) {
@@ -194,17 +292,16 @@ export default {
       }
       this.ctxMenu = null
     },
+
     async revealInFinder() {
-      if (this.ctxImage) {
-        await window.api.invoke('tools:revealInFinder', this.ctxImage.path)
-      }
+      if (this.ctxImage) await window.api.invoke('tools:revealInFinder', this.ctxImage.path)
       this.ctxMenu = null
     },
+
     saveScrollPos() {
-      if (this.$refs.gridWrap) {
-        this.savedScrollTop = this.$refs.gridWrap.scrollTop
-      }
+      if (this.$refs.gridWrap) this.savedScrollTop = this.$refs.gridWrap.scrollTop
     },
+
     emitState() {
       this.$emit('update-state', {
         folderPath: this.folderPath,
@@ -224,6 +321,7 @@ export default {
   width: 100%;
 }
 
+/* ── Toolbar ──────────────────────────────────── */
 .gallery-toolbar {
   height: 48px;
   display: flex;
@@ -244,6 +342,7 @@ export default {
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
 .btn:hover { background: var(--surface-hover); }
 
@@ -251,23 +350,78 @@ export default {
   font-size: 13px;
   color: var(--text2);
   font-family: 'SF Mono', 'Menlo', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .image-count {
   font-size: 12px;
   color: var(--text2);
   margin-left: auto;
+  flex-shrink: 0;
 }
 
-.empty-state {
+/* ── Body ─────────────────────────────────────── */
+.gallery-body {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text2);
-  font-size: 15px;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
 }
 
+/* ── Main area ────────────────────────────────── */
+.gallery-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+/* ── Empty states ─────────────────────────────── */
+.empty-state-full {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text2);
+  pointer-events: none;
+}
+
+.empty-state-full svg {
+  width: 52px;
+  height: 52px;
+  opacity: 0.2;
+}
+
+.empty-title {
+  font-size: 15px;
+  color: var(--text);
+  opacity: 0.5;
+}
+
+.empty-hint {
+  font-size: 12px;
+  opacity: 0.4;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Grid ─────────────────────────────────────── */
 .grid-wrap {
   flex: 1;
   overflow-y: auto;
@@ -290,10 +444,7 @@ export default {
   cursor: pointer;
   background: var(--surface);
 }
-
-.grid-cell:hover .grid-label {
-  opacity: 1;
-}
+.grid-cell:hover .grid-label { opacity: 1; }
 
 .grid-thumb {
   width: 100%;
@@ -310,9 +461,7 @@ export default {
 
 .grid-label {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 0; left: 0; right: 0;
   padding: 4px 6px;
   background: linear-gradient(transparent, rgba(0,0,0,0.7));
   font-size: 10px;
@@ -324,7 +473,7 @@ export default {
   transition: opacity 0.15s;
 }
 
-/* Context menu */
+/* ── Context menu ─────────────────────────────── */
 .ctx-backdrop {
   position: fixed;
   inset: 0;
@@ -349,8 +498,5 @@ export default {
   cursor: pointer;
   transition: background 0.1s;
 }
-
-.ctx-item:hover {
-  background: var(--surface2);
-}
+.ctx-item:hover { background: var(--surface2); }
 </style>
