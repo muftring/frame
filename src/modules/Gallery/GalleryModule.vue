@@ -99,7 +99,8 @@ export default {
   components: { ImageViewer, SmartAlbumsPanel },
   props: {
     sessionState:  { type: Object, default: null },
-    activeSession: { type: Object, default: null }
+    activeSession: { type: Object, default: null },
+    initialSource: { type: Object, default: null }
   },
   emits: ['update-state'],
   data() {
@@ -143,6 +144,13 @@ export default {
   async mounted() {
     const tools = await window.api.invoke('tools:findInstalled')
     this.installedTools = tools
+
+    if (this.initialSource) {
+      const labelMap = { kept: 'Kept', deleted: 'Deleted', unreviewed: 'Unreviewed' }
+      const label = labelMap[this.initialSource.status] || null
+      await this.handleSourceSelect(this.initialSource, label)
+      return
+    }
 
     const lastSource = await window.api.invoke('store:get', 'galleryLastSource')
     if (lastSource?.albumId) {

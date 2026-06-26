@@ -157,8 +157,13 @@ ipcMain.handle('session:list', () => sessionStore.sessionList())
 ipcMain.handle('session:get', (_, sessionId) => sessionStore.sessionGet(sessionId))
 ipcMain.handle('session:update', (_, sessionId, fields) => sessionStore.sessionUpdate(sessionId, fields))
 ipcMain.handle('session:archive', (_, sessionId) => sessionStore.sessionArchive(sessionId))
-ipcMain.handle('session:updatePipeline', (_, sessionId, stage, complete) =>
-  sessionStore.sessionUpdatePipeline(sessionId, stage, complete))
+ipcMain.handle('session:updatePipeline', (event, sessionId, stage, complete) => {
+  const result = sessionStore.sessionUpdatePipeline(sessionId, stage, complete)
+  if (result.allComplete) {
+    event.sender.send('session:complete', { sessionId, summary: result.summary })
+  }
+  return result
+})
 
 ipcMain.handle('group:create', (_, sessionId, label, folderPath, fileCount, startTs, endTs, sortOrder) =>
   sessionStore.groupCreate(sessionId, label, folderPath, fileCount, startTs, endTs, sortOrder))

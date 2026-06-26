@@ -3,7 +3,6 @@
 
     <!-- Recent Sessions -->
     <section class="home-sessions">
-      <h2 class="home-section-title">Recent Sessions</h2>
 
       <div v-if="loading" class="home-loading">
         <div class="spinner"></div>
@@ -13,6 +12,37 @@
         <div v-if="sessions.length === 0" class="home-empty">
           No sessions yet — import photos to get started
         </div>
+
+        <!-- Completed sessions -->
+        <template v-if="completedSessions.length">
+          <h2 class="home-section-title">Completed</h2>
+          <div class="session-list" style="margin-bottom: 28px">
+            <div v-for="s in completedSessions" :key="s.id" class="session-card session-card-complete">
+              <div class="sc-top">
+                <span class="sc-name sc-name-static">{{ s.name }}</span>
+                <div class="sc-badges">
+                  <span class="badge-complete">Complete</span>
+                  <span v-if="s.summaryData" class="badge-keeprate">
+                    {{ keepRate(s.summaryData) }} kept
+                  </span>
+                </div>
+              </div>
+              <div class="sc-meta">
+                {{ fmtDate(s.created_at) }}
+                <span v-if="s.summaryData" class="meta-dot">·</span>
+                <span v-if="s.summaryData">{{ s.summaryData.keptCount }} / {{ s.summaryData.fileCount }} photos</span>
+                <span v-if="s.summaryData?.destinations?.length" class="meta-dot">·</span>
+                <span v-if="s.summaryData?.destinations?.length">{{ s.summaryData.destinations.join(', ') }}</span>
+              </div>
+              <div class="sc-actions sc-actions-complete">
+                <button class="btn-resume" @click="doViewGallery(s)">View in Gallery →</button>
+                <button class="btn-archive-sm" @click="doArchive(s)">Archive</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <h2 class="home-section-title">Recent Sessions</h2>
 
         <div v-if="activeSessions.length" class="session-list">
           <div v-for="s in activeSessions" :key="s.id" class="session-card">
@@ -140,7 +170,7 @@ const STAGES = [
 
 export default {
   name: 'HomeModule',
-  emits: ['session-started', 'session-resume'],
+  emits: ['session-started', 'session-resume', 'session-gallery'],
   data() {
     return {
       STAGES,
@@ -157,6 +187,14 @@ export default {
   computed: {
     activeSessions() {
       return this.sessions.filter(s => s.status === 'active')
+    },
+    completedSessions() {
+      return this.sessions
+        .filter(s => s.status === 'complete')
+        .map(s => ({
+          ...s,
+          summaryData: (() => { try { return JSON.parse(s.summary || 'null') } catch { return null } })()
+        }))
     },
     archivedSessions() {
       return this.sessions.filter(s => s.status === 'archived')
@@ -206,6 +244,13 @@ export default {
     },
     doResume(session) {
       this.$emit('session-resume', session)
+    },
+    doViewGallery(session) {
+      this.$emit('session-gallery', session)
+    },
+    keepRate(summaryData) {
+      if (!summaryData?.fileCount) return '—'
+      return Math.round((summaryData.keptCount / summaryData.fileCount) * 100) + '%'
     },
     async pickSource() {
       const folder = await window.api.invoke('dialog:openFolder')
@@ -286,6 +331,40 @@ export default {
 
 .session-card-archived {
   opacity: 0.6;
+}
+
+.session-card-complete {
+  border-color: rgba(102, 187, 106, 0.25);
+  background: rgba(102, 187, 106, 0.03);
+}
+
+.badge-complete {
+  font-size: 11px;
+  font-weight: 600;
+  color: #66bb6a;
+  background: rgba(102, 187, 106, 0.12);
+  border: 1px solid rgba(102, 187, 106, 0.28);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.badge-keeprate {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(201, 168, 76, 0.1);
+  border: 1px solid rgba(201, 168, 76, 0.22);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.sc-actions-complete {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .sc-top {

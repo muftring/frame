@@ -79,6 +79,9 @@ function initSchema() {
       updated_at  INTEGER NOT NULL
     );
   `)
+  // migrations for columns added after initial release
+  try { db.prepare('ALTER TABLE sessions ADD COLUMN summary TEXT').run() } catch { /* already exists */ }
+
   seedDefaultAlbums()
 }
 
@@ -125,7 +128,7 @@ function sessionList() {
   try {
     const db = getDb()
     return db.prepare(`
-      SELECT s.id, s.name, s.status, s.created_at, s.updated_at,
+      SELECT s.id, s.name, s.status, s.summary, s.created_at, s.updated_at,
              COALESCE(p.current_stage, 'triage')    AS currentStage,
              COALESCE(p.triage_complete,  0)         AS triageComplete,
              COALESCE(p.sort_complete,    0)         AS sortComplete,
@@ -196,6 +199,24 @@ function sessionArchive(sessionId) {
   }
 }
 
+function computeSessionSummary(sessionId) {
+  const db = getDb()
+  const fileCount = db.prepare('SELECT COUNT(*) AS n FROM files WHERE session_id = ?').get(sessionId)?.n || 0
+  const keptCount = db.prepare("SELECT COUNT(*) AS n FROM files WHERE session_id = ? AND status = 'kept'").get(sessionId)?.n || 0
+  const deletedCount = db.prepare("SELECT COUNT(*) AS n FROM files WHERE session_id = ? AND status = 'deleted'").get(sessionId)?.n || 0
+  const groupCount = db.prepare('SELECT COUNT(*) AS n FROM event_groups WHERE session_id = ?').get(sessionId)?.n || 0
+
+  const publishedRows = db.prepare("SELECT published_to FROM files WHERE session_id = ? AND published_to IS NOT NULL AND published_to != '[]'").all(sessionId)
+  const destinations = new Set()
+  for (const row of publishedRows) {
+    try { for (const d of JSON.parse(row.published_to)) destinations.add(d) } catch { /* skip */ }
+  }
+
+  const ts = db.prepare('SELECT MIN(exif_ts) AS minTs, MAX(exif_ts) AS maxTs FROM files WHERE session_id = ? AND exif_ts IS NOT NULL').get(sessionId)
+
+  return { fileCount, keptCount, deletedCount, groupCount, destinations: [...destinations], minTs: ts?.minTs || null, maxTs: ts?.maxTs || null }
+}
+
 const PIPELINE_COLS = {
   triage: 'triage_complete',
   sort: 'sort_complete',
@@ -213,6 +234,17 @@ function sessionUpdatePipeline(sessionId, stage, complete) {
       `UPDATE pipeline_state SET ${col} = ?, current_stage = ? WHERE session_id = ?`
     ).run(complete ? 1 : 0, stage, sessionId)
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), sessionId)
+
+    if (complete && stage === 'publish') {
+      const ps = db.prepare('SELECT * FROM pipeline_state WHERE session_id = ?').get(sessionId)
+      if (ps?.triage_complete && ps?.sort_complete && ps?.process_complete && ps?.publish_complete) {
+        const summary = computeSessionSummary(sessionId)
+        db.prepare("UPDATE sessions SET status = 'complete', summary = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(summary), Date.now(), sessionId)
+        return { success: true, allComplete: true, summary }
+      }
+    }
+
     return { success: true }
   } catch (err) {
     return { error: err.message }

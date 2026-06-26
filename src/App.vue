@@ -88,10 +88,11 @@
           v-if="currentModule === 'home'"
           @session-started="handleSessionStarted"
           @session-resume="handleSessionResume"
+          @session-gallery="handleSessionGallery"
         />
         <TriageModule v-else-if="currentModule === 'triage'" @navigate="handleNavigate" />
         <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
-        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" @update-state="galleryState = $event" />
+        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" />
         <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
         <ProcessModule v-else-if="currentModule === 'process'" />
         <UploadModule v-else-if="currentModule === 'upload'" />
@@ -99,6 +100,14 @@
     </main>
 
     <SettingsPanel v-if="showSettings" :settings="settings" @close="showSettings = false" />
+
+    <SessionComplete
+      v-if="showSessionComplete"
+      :summary="sessionCompleteData?.summary || {}"
+      @view-gallery="handleViewGallery"
+      @new-session="handleNewSession"
+      @archive="handleArchiveSession"
+    />
 
     <!-- Toast notifications -->
     <div class="toast-container">
@@ -113,6 +122,7 @@
 
 <script>
 import HomeModule from './modules/Home/HomeModule.vue'
+import SessionComplete from './modules/Home/SessionComplete.vue'
 import TriageModule from './modules/Triage/TriageModule.vue'
 import SorterModule from './modules/Sorter/SorterModule.vue'
 import GalleryModule from './modules/Gallery/GalleryModule.vue'
@@ -149,7 +159,7 @@ export default {
   name: 'App',
   components: {
     HomeModule, TriageModule, SorterModule, GalleryModule,
-    EditorModule, ProcessModule, UploadModule, SettingsPanel
+    EditorModule, ProcessModule, UploadModule, SettingsPanel, SessionComplete
   },
   provide() {
     return {
@@ -169,6 +179,8 @@ export default {
       settingsReady: false,
       activeSession: null,
       sessionProxy: { id: null, name: null, currentStage: null, pipelineState: {} },
+      showSessionComplete: false,
+      sessionCompleteData: null,
       pipelineStages: PIPELINE_STAGES,
       toasts: [],
       settings: {
@@ -213,9 +225,14 @@ export default {
     if (saved) Object.assign(this.settings, saved)
     this.settingsReady = true
     window.addEventListener('keydown', this.handleGlobalKey)
+    this._completeCleanup = window.api.on('session:complete', (data) => {
+      this.sessionCompleteData = data
+      this.showSessionComplete = true
+    })
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleGlobalKey)
+    if (this._completeCleanup) this._completeCleanup()
   },
   methods: {
     selectModule(id) {
@@ -297,6 +314,43 @@ export default {
       this.currentModule = stage.module
       this.moduleData = null
       this.showSettings = false
+    },
+    handleViewGallery() {
+      this.showSessionComplete = false
+      this.moduleData = { type: 'session-status', sessionId: this.activeSession?.id, status: 'kept' }
+      this.currentModule = 'gallery'
+    },
+    handleNewSession() {
+      this.showSessionComplete = false
+      this.activeSession = null
+      Object.assign(this.sessionProxy, { id: null, name: null, currentStage: null, pipelineState: {} })
+      this.sessionCompleteData = null
+      this.currentModule = 'home'
+      this.moduleData = null
+    },
+    async handleArchiveSession() {
+      if (this.activeSession?.id) {
+        await window.api.invoke('session:archive', this.activeSession.id)
+      }
+      this.showSessionComplete = false
+      this.activeSession = null
+      Object.assign(this.sessionProxy, { id: null, name: null, currentStage: null, pipelineState: {} })
+      this.sessionCompleteData = null
+      this.currentModule = 'home'
+      this.moduleData = null
+    },
+    async handleSessionGallery(session) {
+      const data = await window.api.invoke('session:get', session.id)
+      const pipeline = data?.pipelineState || {}
+      this.activeSession = {
+        id: session.id, name: session.name, currentStage: pipeline.current_stage || 'publish',
+        triageComplete: !!pipeline.triage_complete, sortComplete: !!pipeline.sort_complete,
+        editComplete: !!pipeline.edit_complete, processComplete: !!pipeline.process_complete,
+        publishComplete: !!pipeline.publish_complete,
+      }
+      Object.assign(this.sessionProxy, { id: session.id, name: session.name, currentStage: 'publish', pipelineState: pipeline })
+      this.moduleData = { type: 'session-status', sessionId: session.id, status: 'kept' }
+      this.currentModule = 'gallery'
     },
     addToast(message, type = 'info') {
       const id = Date.now() + Math.random()
