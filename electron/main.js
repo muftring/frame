@@ -26,6 +26,8 @@ ipcMain.handle('img:rotate', (_, filePath, degrees, outputPath) => imageProcesso
 ipcMain.handle('img:crop', (_, filePath, region, outputPath) => imageProcessor.crop(filePath, region, outputPath))
 ipcMain.handle('img:getMetadata', (_, filePath) => imageProcessor.getMetadata(filePath))
 ipcMain.handle('img:flip', (_, filePath, direction, outputPath) => imageProcessor.flip(filePath, direction, outputPath))
+ipcMain.handle('img:getFullMetadata', (_, filePath) => imageProcessor.getFullMetadata(filePath))
+ipcMain.handle('img:getMetadataBatch', (_, filePaths) => imageProcessor.getMetadataBatch(filePaths))
 
 ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
 ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
