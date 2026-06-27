@@ -33,10 +33,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/electron/*.dmg
-            dist/electron/*.zip
+        run: gh release upload "${{ github.ref_name }}" dist/electron/*.dmg dist/electron/*.zip --clobber
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
