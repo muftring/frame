@@ -38,11 +38,11 @@ The thumbnail grid uses IntersectionObserver for lazy loading. Click any thumbna
 
 **Process** — Launch files and folders in Darktable or RawTherapee. Run RawTherapee CLI batch exports with live log streaming. In session mode, a "Session Kept Files" button loads all kept files as the export source, and a successful export marks the Process stage complete.
 
-**Upload** — Upload photos to cloud storage via a provider-based system. Two providers included:
+**Publish** — Publish photos to cloud storage via a provider-based system. Two providers included:
 - **ArchiVault** — Upload to AWS S3 with integrity tracking via the `archivault` CLI. Supports tagging and uploaded-by metadata.
 - **iCloud Photos** — Import into Photos.app via osascript (macOS only). Files sync to iCloud automatically.
 
-In session mode, a "Session Kept Files" button loads kept files as the upload source. After a successful upload, each file's published destinations are recorded in the database. When all kept files have at least one destination, the Publish stage is marked complete and the session complete screen is shown.
+In session mode, a "Session Kept Files" button loads kept files as the publish source. After a successful publish, each file's destinations are recorded in the database. When all kept files have at least one destination, the Publish stage is marked complete and the session complete screen is shown.
 
 ## Themes
 
@@ -90,7 +90,7 @@ frame/
 │       │   └── MetadataPanel.vue   # Slide-in EXIF panel
 │       ├── Editor/            # EditorModule.vue
 │       ├── Process/           # ProcessModule.vue
-│       ├── Upload/            # UploadModule.vue
+│       ├── Publish/           # PublishModule.vue
 │       └── Settings/          # SettingsPanel.vue
 ├── index.html
 ├── vite.config.js

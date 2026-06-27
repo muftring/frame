@@ -37,9 +37,9 @@
             </div>
           </section>
 
-          <!-- Upload -->
+          <!-- Publish -->
           <section class="settings-section">
-            <h4>Upload</h4>
+            <h4>Publish</h4>
             <div class="setting-row">
               <label>ArchiVault CLI path</label>
               <div class="path-input">

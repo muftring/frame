@@ -37,7 +37,7 @@
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M7 12l3 2-3 2M13 16h4" />
             </template>
-            <template v-if="item.icon === 'upload'">
+            <template v-if="item.icon === 'publish'">
               <path d="M12 16V4M12 4l5 5M12 4L7 9" />
               <path d="M4 14v5a2 2 0 002 2h12a2 2 0 002-2v-5" />
             </template>
@@ -95,7 +95,7 @@
         <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" />
         <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
         <ProcessModule v-else-if="currentModule === 'process'" />
-        <UploadModule v-else-if="currentModule === 'upload'" />
+        <PublishModule v-else-if="currentModule === 'publish'" />
       </div>
     </main>
 
@@ -128,7 +128,7 @@ import SorterModule from './modules/Sorter/SorterModule.vue'
 import GalleryModule from './modules/Gallery/GalleryModule.vue'
 import EditorModule from './modules/Editor/EditorModule.vue'
 import ProcessModule from './modules/Process/ProcessModule.vue'
-import UploadModule from './modules/Upload/UploadModule.vue'
+import PublishModule from './modules/Publish/PublishModule.vue'
 import SettingsPanel from './modules/Settings/SettingsPanel.vue'
 
 const PIPELINE_STAGES = [
@@ -136,7 +136,7 @@ const PIPELINE_STAGES = [
   { id: 'sort',    label: 'Sort',    completeKey: 'sortComplete',    module: 'sorter' },
   { id: 'edit',    label: 'Edit',    completeKey: 'editComplete',    module: 'editor' },
   { id: 'process', label: 'Process', completeKey: 'processComplete', module: 'process' },
-  { id: 'publish', label: 'Publish', completeKey: 'publishComplete', module: 'upload' },
+  { id: 'publish', label: 'Publish', completeKey: 'publishComplete', module: 'publish' },
 ]
 
 const MODULE_STAGE = {
@@ -144,7 +144,7 @@ const MODULE_STAGE = {
   sorter: 'sort',
   editor: 'edit',
   process: 'process',
-  upload: 'publish',
+  publish: 'publish',
 }
 
 const STAGE_MODULE = {
@@ -152,14 +152,14 @@ const STAGE_MODULE = {
   sort: 'sorter',
   edit: 'editor',
   process: 'process',
-  publish: 'upload',
+  publish: 'publish',
 }
 
 export default {
   name: 'App',
   components: {
     HomeModule, TriageModule, SorterModule, GalleryModule,
-    EditorModule, ProcessModule, UploadModule, SettingsPanel, SessionComplete
+    EditorModule, ProcessModule, PublishModule, SettingsPanel, SessionComplete
   },
   provide() {
     return {
@@ -201,7 +201,7 @@ export default {
         { id: 'gallery', label: 'Gallery', icon: 'gallery' },
         { id: 'editor',  label: 'Editor',  icon: 'editor' },
         { id: 'process', label: 'Process', icon: 'process' },
-        { id: 'upload',  label: 'Upload',  icon: 'upload' },
+        { id: 'publish', label: 'Publish', icon: 'publish' },
       ]
     }
   },
@@ -368,7 +368,7 @@ export default {
           '3': 'gallery',
           '4': 'editor',
           '5': 'process',
-          '6': 'upload',
+          '6': 'publish',
         }
         if (moduleKeys[e.key]) {
           e.preventDefault()

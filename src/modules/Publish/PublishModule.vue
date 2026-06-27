@@ -26,7 +26,7 @@
         <path d="M24 6v16M24 22l8-8M24 22l-8-8" />
         <path d="M8 28v10a2 2 0 002 2h28a2 2 0 002-2V28" />
       </svg>
-      <div class="empty-title">No upload providers available</div>
+      <div class="empty-title">No publish providers available</div>
       <div class="empty-hint">Install ArchiVault or run on macOS for iCloud Photos</div>
     </div>
 
@@ -104,9 +104,9 @@
         </div>
       </section>
 
-      <!-- Upload -->
+      <!-- Publish -->
       <section class="section">
-        <h3>Upload</h3>
+        <h3>Publish</h3>
         <div class="section-body">
           <button
             class="btn btn-accent"
@@ -151,7 +151,7 @@
         <path d="M24 6v16M24 22l8-8M24 22l-8-8" />
         <path d="M8 28v10a2 2 0 002 2h28a2 2 0 002-2V28" />
       </svg>
-      <div class="empty-title">Select an upload provider</div>
+      <div class="empty-title">Select a provider</div>
       <div class="empty-hint">Choose a destination above to get started</div>
     </div>
   </div>
@@ -159,7 +159,7 @@
 
 <script>
 export default {
-  name: 'UploadModule',
+  name: 'PublishModule',
   inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
   data() {
     return {
