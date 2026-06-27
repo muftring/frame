@@ -28,11 +28,11 @@ A **"Mark Sort Complete"** button appears once every file has been reviewed (non
 
 **Gallery** — Browse images from multiple sources via a left sidebar:
 
-- **Smart Albums** — dynamic albums defined by rule sets (status, rating, date range, filename, size, published destination). A rule builder modal lets you create and edit albums with live preview counts. Five default albums ship with every install.
+- **Smart Albums** — dynamic albums defined by rule sets (status, rating, date range, filename, size, published destination, tags). A rule builder modal lets you create and edit albums with live preview counts. Five default albums ship with every install.
 - **This Session** — auto-generated views for All, Kept, Deleted, and Unreviewed files in the active session, plus individual event groups.
 - **Open Folder** — classic folder browse mode.
 
-The thumbnail grid uses IntersectionObserver for lazy loading. Click any thumbnail for a full-screen viewer; a slide-in metadata panel shows EXIF data and ratings. Right-click for a context menu to open in Darktable, RawTherapee, or reveal in Finder.
+The thumbnail grid uses IntersectionObserver for lazy loading. Click any thumbnail for a full-screen viewer; a slide-in metadata panel shows EXIF data, star ratings, and tags. Right-click for a context menu to open in Darktable, RawTherapee, or reveal in Finder.
 
 **Editor** — Canvas-based image editor with rotate (90/180/flip) and crop tools. Draggable crop rectangle with corner handles, rule-of-thirds overlay, and aspect ratio presets (Free, 4:3, 3:2, 1:1, 16:9). Undo history keeps the last 5 states. Save overwrites the original or saves a copy. In session mode, each save appends an operation log to the file's edit history in the database.
 
@@ -40,9 +40,17 @@ The thumbnail grid uses IntersectionObserver for lazy loading. Click any thumbna
 
 **Publish** — Publish photos to cloud storage via a provider-based system. Two providers included:
 - **ArchiVault** — Upload to AWS S3 with integrity tracking via the `archivault` CLI. Supports tagging and uploaded-by metadata.
-- **iCloud Photos** — Import into Photos.app via osascript (macOS only). Files sync to iCloud automatically.
+- **iCloud Photos** — Import into Photos.app via osascript (macOS only). Files sync to iCloud automatically. Supports an optional **album name** — the album is created if it doesn't exist, and all files are imported into it. If the files have Frame tags, those tags are set as Photos **keywords** on each imported item via AppleScript.
 
 In session mode, a "Session Kept Files" button loads kept files as the publish source. After a successful publish, each file's destinations are recorded in the database. When all kept files have at least one destination, the Publish stage is marked complete and the session complete screen is shown.
+
+## Tags
+
+Tags are free-form keywords attached to individual files and stored in the database. Add or remove tags from the metadata panel in Gallery (type a tag and press Enter or comma; click × to remove). Tags are lowercase and deduplicated.
+
+Tags integrate with the rest of Frame:
+- **Smart Albums** — use the `has tag` rule to build dynamic albums like "all files tagged lacrosse"
+- **iCloud Publish** — tags are automatically set as Photos keywords on import when publishing to iCloud Photos
 
 ## Themes
 
@@ -119,7 +127,7 @@ Produces macOS DMG and ZIP for both arm64 and x64 in `dist/electron/`.
 | Shortcut | Action |
 |----------|--------|
 | Cmd+0 | Home |
-| Cmd+1–6 | Switch between modules (Triage → Upload) |
+| Cmd+1–6 | Switch between modules (Triage → Publish) |
 | Cmd+, | Toggle Settings panel |
 | K | Keep image (Sorter) |
 | D | Delete image (Sorter) |
