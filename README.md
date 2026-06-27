@@ -14,9 +14,17 @@ When all pipeline stages are marked complete, Frame displays a **session complet
 
 **Triage** — Group incoming photos by time gaps and copy them into organized event folders. Scans EXIF timestamps, adjusts grouping threshold with a slider, and previews each group with thumbnails before copying. In session mode, groups and files are registered in the database after copying so the full pipeline can track them.
 
-**Sorter** — Flip through images one at a time to keep or delete. Filmstrip navigation, full-resolution viewer, keyboard-driven workflow (K to keep, D to delete, arrow keys to navigate). Trashed files go to a `.frame-trash` folder with restore and empty-trash support.
+**Sorter** — Flip through images one at a time to keep or delete. Filmstrip navigation, full-resolution viewer, keyboard-driven workflow (K to keep, D to delete, arrow keys to navigate).
 
-In session mode: loads files directly from the session database (not a folder), shows group labels in the viewer, tracks keep/delete status per file, offers a "Resume from where you left off" prompt on re-entry, and shows a "Mark Sort Complete" button once every file has been reviewed.
+In **standalone mode** (no active session), deleting a file physically moves it to a `.frame-trash` sibling folder immediately. Files can be restored individually or the trash can be permanently emptied.
+
+In **session mode**, delete is a database-only soft delete — the file stays on disk in its event folder, only its status in SQLite changes. This means:
+- **Un-deleting is instant**: navigate back to a deleted file and press K, or use the Deleted panel's Restore button. No file moves needed.
+- The "Recently Deleted" smart album shows all soft-deleted files across sessions.
+- A **"Clean up (N)"** button appears in the toolbar when deleted files haven't yet been moved to `.frame-trash`. Clicking shows a confirmation with the file count and approximate disk space to reclaim, then moves files to a per-group `.frame-trash` folder.
+- The session complete screen also offers a one-click cleanup card if deleted files remain on disk after the pipeline finishes.
+
+A **"Mark Sort Complete"** button appears once every file has been reviewed (none remain unreviewed), advancing the session pipeline. In session mode, a "Resume from where you left off" prompt appears on re-entry if the pipeline has a saved position.
 
 **Gallery** — Browse images from multiple sources via a left sidebar:
 
