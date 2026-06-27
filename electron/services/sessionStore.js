@@ -82,6 +82,11 @@ function initSchema() {
   // migrations for columns added after initial release
   try { db.prepare('ALTER TABLE sessions ADD COLUMN summary TEXT').run() } catch { /* already exists */ }
 
+  const filesCols = db.prepare('PRAGMA table_info(files)').all().map(c => c.name)
+  if (!filesCols.includes('trashed_at')) {
+    db.prepare('ALTER TABLE files ADD COLUMN trashed_at INTEGER DEFAULT NULL').run()
+  }
+
   seedDefaultAlbums()
 }
 
@@ -359,6 +364,16 @@ function fileUpdateStatus(fileId, status) {
   try {
     const db = getDb()
     db.prepare('UPDATE files SET status = ? WHERE id = ?').run(status, fileId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function fileUpdateTrashedPath(fileId, newPath, trashedAt) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET full_path = ?, trashed_at = ? WHERE id = ?').run(newPath, trashedAt, fileId)
     return { success: true }
   } catch (err) {
     return { error: err.message }
@@ -665,6 +680,7 @@ module.exports = {
   groupList,
   fileUpsert,
   fileUpdateStatus,
+  fileUpdateTrashedPath,
   fileUpdatePublished,
   fileListByGroup,
   fileListBySession,

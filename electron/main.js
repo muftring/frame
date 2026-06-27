@@ -174,6 +174,7 @@ ipcMain.handle('pipeline:setLastFile', (_, sessionId, fileId) => sessionStore.pi
 ipcMain.handle('file:upsert', (_, sessionId, groupId, fileData) =>
   sessionStore.fileUpsert(sessionId, groupId, fileData))
 ipcMain.handle('file:updateStatus', (_, fileId, status) => sessionStore.fileUpdateStatus(fileId, status))
+ipcMain.handle('file:updateTrashedPath', (_, fileId, newPath, trashedAt) => sessionStore.fileUpdateTrashedPath(fileId, newPath, trashedAt))
 ipcMain.handle('file:updatePublished', (_, fileId, destinations) =>
   sessionStore.fileUpdatePublished(fileId, destinations))
 ipcMain.handle('file:listByGroup', (_, groupId) => sessionStore.fileListByGroup(groupId))

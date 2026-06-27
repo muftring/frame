@@ -13,8 +13,13 @@
         <span class="stat-trashed">{{ trashedCount }} deleted</span>
       </div>
       <div class="toolbar-spacer"></div>
+      <button
+        v-if="sessionMode && deletedNotMoved.length"
+        class="btn btn-cleanup"
+        @click="showCleanupModal = true"
+      >Clean up ({{ deletedNotMoved.length }})</button>
       <button v-if="images.length" class="btn" :class="{ active: trashPanelOpen }" @click="trashPanelOpen = !trashPanelOpen">
-        Trash{{ trashedCount ? ' (' + trashedCount + ')' : '' }}
+        {{ sessionMode ? 'Deleted' : 'Trash' }}{{ trashedCount ? ' (' + trashedCount + ')' : '' }}
       </button>
     </div>
 
@@ -38,7 +43,7 @@
         >
           <img v-if="img.thumbnail" :src="img.thumbnail" />
           <div v-else class="thumb-placeholder"></div>
-          <div v-if="img.status === 'trashed'" class="thumb-trash-badge">x</div>
+          <div v-if="img.status === 'trashed'" class="thumb-del-badge">del</div>
         </div>
       </div>
 
@@ -66,11 +71,11 @@
         </div>
       </div>
 
-      <!-- Trash panel -->
+      <!-- Deleted/Trash panel -->
       <transition name="slide">
         <div v-if="trashPanelOpen" class="trash-panel">
           <div class="trash-header">
-            <h4>Trash ({{ trashedCount }})</h4>
+            <h4>{{ sessionMode ? 'Deleted' : 'Trash' }} ({{ trashedCount }})</h4>
             <button class="btn-sm" @click="trashPanelOpen = false">Close</button>
           </div>
           <div class="trash-actions" v-if="trashedCount && !sessionMode">
@@ -80,7 +85,7 @@
           <div class="trash-list">
             <div v-for="img in trashedImages" :key="img.path" class="trash-item">
               <span class="trash-item-name">{{ img.name }}</span>
-              <button v-if="!sessionMode || img.trashedPath" class="btn-sm" @click="restore(img)">Restore</button>
+              <button class="btn-sm" @click="restore(img)">Restore</button>
             </div>
           </div>
           <div v-if="!trashedCount" class="trash-empty">No deleted images</div>
@@ -117,7 +122,7 @@
       >Mark Sort Complete</button>
     </div>
 
-    <!-- Confirm empty trash modal -->
+    <!-- Confirm empty trash modal (non-session mode) -->
     <div v-if="confirmEmptyTrash" class="modal-overlay" @click.self="confirmEmptyTrash = false">
       <div class="modal">
         <h4>Empty Trash?</h4>
@@ -125,6 +130,23 @@
         <div class="modal-actions">
           <button class="btn" @click="confirmEmptyTrash = false">Cancel</button>
           <button class="btn btn-danger" @click="emptyTrash">Delete Permanently</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clean up deleted files modal (session mode) -->
+    <div v-if="showCleanupModal" class="modal-overlay" @click.self="showCleanupModal = false">
+      <div class="modal">
+        <h4>Move {{ deletedNotMoved.length }} deleted {{ deletedNotMoved.length === 1 ? 'file' : 'files' }} to trash?</h4>
+        <p>
+          This will free approximately {{ formatSize(cleanupTotalSize) }}.<br>
+          You can still recover them from .frame-trash until you empty the trash.
+        </p>
+        <div class="modal-actions">
+          <button class="btn" @click="showCleanupModal = false" :disabled="cleaningUp">Keep on disk</button>
+          <button class="btn btn-danger" @click="doCleanup" :disabled="cleaningUp">
+            {{ cleaningUp ? 'Moving…' : 'Move to trash' }}
+          </button>
         </div>
       </div>
     </div>
@@ -147,6 +169,8 @@ export default {
       loading: false,
       trashPanelOpen: false,
       confirmEmptyTrash: false,
+      showCleanupModal: false,
+      cleaningUp: false,
       showResumePrompt: false,
       resumeFileId: null
     }
@@ -167,16 +191,19 @@ export default {
     trashedImages() {
       return this.images.filter(i => i.status === 'trashed')
     },
+    deletedNotMoved() {
+      return this.images.filter(i => i.status === 'trashed' && !i.trashedAt)
+    },
+    cleanupTotalSize() {
+      return this.deletedNotMoved.reduce((sum, i) => sum + (i.size || 0), 0)
+    },
     progressPercent() {
       if (!this.images.length) return 0
       return ((this.currentIndex + 1) / this.images.length) * 100
     },
     viewerImageUrl() {
       if (!this.currentImage) return ''
-      const p = this.currentImage.status === 'trashed' && this.currentImage.trashedPath
-        ? this.currentImage.trashedPath
-        : this.currentImage.path
-      return 'local-file://' + encodeURI(p)
+      return 'local-file://' + encodeURI(this.currentImage.path)
     },
     folderDisplayName() {
       if (!this.folderPath) return ''
@@ -233,7 +260,7 @@ export default {
               size: f.size_bytes || 0,
               thumbnail: null,
               status: f.status === 'deleted' ? 'trashed' : (f.status === 'kept' ? 'kept' : 'pending'),
-              trashedPath: null,
+              trashedAt: f.trashed_at || null,
               groupId: group.id,
               groupLabel: group.label
             })
@@ -295,7 +322,7 @@ export default {
         size: f.size,
         thumbnail: null,
         status: 'pending',
-        trashedPath: null,
+        trashedAt: null,
         groupId: null,
         groupLabel: null
       }))
@@ -319,41 +346,49 @@ export default {
       this.advanceNext()
     },
     async doTrash() {
-      if (!this.currentImage || this.currentImage.status === 'trashed') {
+      if (!this.currentImage) return
+      if (this.currentImage.status === 'trashed') {
         this.advanceNext()
         return
       }
-      const trashFolder = this.folderPath
-        ? this.folderPath + '/.frame-trash'
-        : this.currentImage.path.replace(/\/[^/]+$/, '') + '/.frame-trash'
-      const result = await window.api.invoke('fs:moveToTrash', this.currentImage.path, trashFolder)
-      if (result.success) {
+      if (this.sessionMode) {
+        // DB-only soft delete — file stays on disk in its event folder
         this.currentImage.status = 'trashed'
-        this.currentImage.trashedPath = result.trashedPath
-      } else if (result.error) {
-        this.toast(result.error, 'error')
-      }
-      if (this.sessionMode && this.currentImage.fileId) {
-        window.api.invoke('file:updateStatus', this.currentImage.fileId, 'deleted')
+        if (this.currentImage.fileId) {
+          window.api.invoke('file:updateStatus', this.currentImage.fileId, 'deleted')
+        }
+      } else {
+        const trashFolder = this.folderPath
+          ? this.folderPath + '/.frame-trash'
+          : this.currentImage.path.replace(/\/[^/]+$/, '') + '/.frame-trash'
+        const result = await window.api.invoke('fs:moveToTrash', this.currentImage.path, trashFolder)
+        if (result.success) {
+          this.currentImage.status = 'trashed'
+          this.currentImage.path = result.trashedPath
+        } else if (result.error) {
+          this.toast(result.error, 'error')
+          return
+        }
       }
       this.advanceNext()
     },
     async restore(img) {
-      if (!img.trashedPath) return
-      const result = await window.api.invoke('fs:restoreFromTrash', img.trashedPath, img.path)
-      if (result.success) {
+      if (this.sessionMode) {
         img.status = 'pending'
-        img.trashedPath = null
-        if (this.sessionMode && img.fileId) {
+        if (img.fileId) {
           window.api.invoke('file:updateStatus', img.fileId, 'unreviewed')
         }
+        return
+      }
+      const trashedPath = img.path
+      const result = await window.api.invoke('fs:restoreFromTrash', trashedPath, img.path)
+      if (result.success) {
+        img.status = 'pending'
       }
     },
     async restoreAll() {
       const trashed = [...this.trashedImages]
-      for (const img of trashed) {
-        await this.restore(img)
-      }
+      for (const img of trashed) await this.restore(img)
     },
     async emptyTrash() {
       const trashFolder = this.folderPath + '/.frame-trash'
@@ -363,6 +398,29 @@ export default {
       if (this.currentIndex >= this.images.length) {
         this.currentIndex = Math.max(0, this.images.length - 1)
       }
+    },
+    async doCleanup() {
+      this.cleaningUp = true
+      const toMove = [...this.deletedNotMoved]
+      for (const img of toMove) {
+        const trashFolder = img.path.replace(/\/[^/]+$/, '') + '/.frame-trash'
+        const result = await window.api.invoke('fs:moveToTrash', img.path, trashFolder)
+        if (result.success) {
+          img.trashedAt = Date.now()
+          img.path = result.trashedPath
+          if (img.fileId) {
+            await window.api.invoke('file:updateTrashedPath', img.fileId, result.trashedPath, img.trashedAt)
+          }
+        }
+      }
+      this.cleaningUp = false
+      this.showCleanupModal = false
+      this.toast(`${toMove.length} deleted file${toMove.length !== 1 ? 's' : ''} moved to trash`, 'success')
+    },
+    formatSize(bytes) {
+      const mb = bytes / (1024 * 1024)
+      if (mb >= 1000) return (mb / 1024).toFixed(1) + ' GB'
+      return mb.toFixed(1) + ' MB'
     },
     prev() {
       if (this.currentIndex > 0) this.currentIndex--
@@ -374,7 +432,7 @@ export default {
       if (this.currentIndex < this.images.length - 1) this.currentIndex++
     },
     handleKeydown(e) {
-      if (this.confirmEmptyTrash) return
+      if (this.confirmEmptyTrash || this.showCleanupModal) return
       switch (e.key) {
         case 'ArrowLeft': this.prev(); e.preventDefault(); break
         case 'ArrowRight': this.next(); e.preventDefault(); break
@@ -481,6 +539,14 @@ export default {
 .btn-danger { border-color: #ef5350; color: #ef5350; }
 .btn-danger:hover { background: rgba(239,83,80,0.12); }
 
+.btn-cleanup {
+  border-color: rgba(239, 83, 80, 0.45);
+  color: #ef5350;
+  font-size: 11px;
+  padding: 5px 10px;
+}
+.btn-cleanup:hover { background: rgba(239,83,80,0.1); }
+
 /* Main area */
 .main-area {
   flex: 1;
@@ -545,13 +611,15 @@ export default {
   background: var(--surface2);
 }
 
-.thumb-trash-badge {
+.thumb-del-badge {
   position: absolute;
   top: 2px;
   right: 4px;
-  font-size: 10px;
-  color: #ef5350;
+  font-size: 9px;
   font-weight: 700;
+  color: #ef5350;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* Viewer */
@@ -677,7 +745,7 @@ export default {
 }
 .complete-btn:hover { background: rgba(201, 168, 76, 0.25); }
 
-/* Trash panel */
+/* Trash/Deleted panel */
 .trash-panel {
   position: absolute;
   right: 0;

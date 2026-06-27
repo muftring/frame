@@ -53,6 +53,20 @@
         </div>
       </div>
 
+      <!-- Cleanup card (deleted files still on disk) -->
+      <div v-if="deletedOnDisk.length" class="sc-cleanup-card">
+        <div class="sc-cleanup-text">
+          <strong>{{ deletedOnDisk.length }} {{ deletedOnDisk.length === 1 ? 'file is' : 'files are' }} marked deleted and still on disk.</strong>
+          Remove them now to free up {{ formatSize(deletedSize) }}?
+        </div>
+        <div class="sc-cleanup-actions">
+          <button class="sc-btn sc-btn-cleanup" @click="doCleanupDeleted" :disabled="cleaningUp">
+            {{ cleaningUp ? 'Moving…' : 'Free up ' + formatSize(deletedSize) }}
+          </button>
+          <button class="sc-btn sc-btn-ghost" @click="deletedOnDisk = []">Keep files on disk</button>
+        </div>
+      </div>
+
       <!-- Gallery strip -->
       <div v-if="keptFiles.length" class="sc-gallery-wrap">
         <h3 class="sc-gallery-title">Kept photos</h3>
@@ -88,7 +102,7 @@
 <script>
 export default {
   name: 'SessionComplete',
-  inject: ['session'],
+  inject: ['session', 'toast'],
   props: {
     summary: { type: Object, default: () => ({}) }
   },
@@ -96,7 +110,10 @@ export default {
   data() {
     return {
       keptFiles: [],
-      thumbnails: []
+      thumbnails: [],
+      deletedOnDisk: [],
+      deletedSize: 0,
+      cleaningUp: false
     }
   },
   computed: {
@@ -130,6 +147,12 @@ export default {
     this.keptFiles = files.slice(0, 40)
     this.thumbnails = new Array(this.keptFiles.length).fill(null)
     this.loadThumbnails()
+
+    const allDeleted = await window.api.invoke('file:listBySession', this.session.id, { status: 'deleted' })
+    if (Array.isArray(allDeleted)) {
+      this.deletedOnDisk = allDeleted.filter(f => !f.trashed_at)
+      this.deletedSize = this.deletedOnDisk.reduce((sum, f) => sum + (f.size_bytes || 0), 0)
+    }
   },
   methods: {
     async loadThumbnails() {
@@ -137,9 +160,30 @@ export default {
         const f = this.keptFiles[i]
         const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 160, height: 120 })
         this.thumbnails[i] = thumb
-        // trigger reactivity
         this.thumbnails = [...this.thumbnails]
       }
+    },
+    async doCleanupDeleted() {
+      this.cleaningUp = true
+      const toMove = [...this.deletedOnDisk]
+      let moved = 0
+      for (const f of toMove) {
+        const trashFolder = f.full_path.replace(/\/[^/]+$/, '') + '/.frame-trash'
+        const result = await window.api.invoke('fs:moveToTrash', f.full_path, trashFolder)
+        if (result.success) {
+          await window.api.invoke('file:updateTrashedPath', f.id, result.trashedPath, Date.now())
+          moved++
+        }
+      }
+      this.deletedOnDisk = []
+      this.deletedSize = 0
+      this.cleaningUp = false
+      this.toast(`${moved} deleted file${moved !== 1 ? 's' : ''} moved to trash`, 'success')
+    },
+    formatSize(bytes) {
+      const mb = bytes / (1024 * 1024)
+      if (mb >= 1000) return (mb / 1024).toFixed(1) + ' GB'
+      return mb.toFixed(1) + ' MB'
     }
   }
 }
@@ -331,6 +375,38 @@ export default {
   border: 1px solid var(--border);
 }
 .sc-btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+
+/* ── Cleanup card ─────────────────────────────── */
+.sc-cleanup-card {
+  width: 100%;
+  background: rgba(239, 83, 80, 0.06);
+  border: 1px solid rgba(239, 83, 80, 0.25);
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sc-cleanup-text {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.sc-cleanup-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sc-btn-cleanup {
+  background: #ef5350;
+  color: #fff;
+  border: none;
+}
+.sc-btn-cleanup:hover { opacity: 0.88; }
+.sc-btn-cleanup:disabled { opacity: 0.5; cursor: default; }
 
 /* ── Skeleton ─────────────────────────────────── */
 .skeleton {
