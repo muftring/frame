@@ -134,9 +134,27 @@
           </span>
         </div>
 
-        <!-- ── HISTOGRAM ── -->
-        <!-- TODO: add RGB histogram rendered on <canvas> by sampling
-             full-res pixel data via an offscreen canvas drawImage pass -->
+        <!-- ── TAGS ── -->
+        <div class="section-header">TAGS</div>
+        <div class="tags-section">
+          <div v-if="tags.length" class="tag-chips">
+            <span v-for="tag in tags" :key="tag" class="tag-chip">
+              {{ tag }}
+              <button class="tag-remove" @click="removeTag(tag)">×</button>
+            </span>
+          </div>
+          <div class="tag-input-row">
+            <input
+              type="text"
+              class="tag-input"
+              placeholder="Add tag…"
+              v-model="newTagInput"
+              @keydown="handleTagKey"
+              :disabled="!fileRecord"
+            />
+          </div>
+          <div v-if="!fileRecord" class="tag-hint">Open a session file to add tags</div>
+        </div>
 
       </div>
     </div>
@@ -180,7 +198,9 @@ export default {
       metadata: null,
       fileRecord: null,
       copied: false,
-      _copyTimer: null
+      _copyTimer: null,
+      tags: [],
+      newTagInput: ''
     }
   },
   computed: {
@@ -234,6 +254,7 @@ export default {
 
       this.metadata = meta?.error ? this.fallbackMeta() : meta
       this.fileRecord = rec?.error ? null : rec
+      try { this.tags = JSON.parse(rec?.tags || '[]') } catch { this.tags = [] }
       this.loading = false
     },
     fallbackMeta() {
@@ -281,10 +302,32 @@ export default {
     },
     async setRating(n) {
       if (!this.fileRecord) return
-      // clicking the current rating again clears it
       const newRating = this.fileRecord.rating === n ? 0 : n
       await window.api.invoke('file:setRating', this.fileRecord.id, newRating)
       this.fileRecord = { ...this.fileRecord, rating: newRating }
+    },
+    handleTagKey(e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault()
+        this.addTag()
+      }
+    },
+    async addTag() {
+      const tag = this.newTagInput.trim().toLowerCase().replace(/,/g, '')
+      this.newTagInput = ''
+      if (!tag || this.tags.includes(tag)) return
+      const newTags = [...this.tags, tag]
+      this.tags = newTags
+      if (this.fileRecord) {
+        await window.api.invoke('file:updateTags', this.fileRecord.id, newTags)
+      }
+    },
+    async removeTag(tag) {
+      const newTags = this.tags.filter(t => t !== tag)
+      this.tags = newTags
+      if (this.fileRecord) {
+        await window.api.invoke('file:updateTags', this.fileRecord.id, newTags)
+      }
     }
   }
 }
@@ -435,6 +478,71 @@ export default {
 .star-btn:hover {
   color: #c9a84c;
   transform: scale(1.15);
+}
+
+/* ── Tags ─────────────────────────────────────── */
+.tags-section {
+  padding: 6px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(201, 168, 76, 0.12);
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  border-radius: 10px;
+  padding: 2px 7px 2px 9px;
+  font-size: 11px;
+  color: var(--accent);
+  line-height: 1.4;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(201, 168, 76, 0.5);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  transition: color 0.1s;
+}
+.tag-remove:hover { color: var(--accent); }
+
+.tag-input-row {
+  display: flex;
+}
+
+.tag-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 5px 9px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.tag-input:focus { border-color: rgba(201, 168, 76, 0.5); }
+.tag-input::placeholder { color: rgba(255, 255, 255, 0.25); }
+.tag-input:disabled { opacity: 0.4; cursor: default; }
+
+.tag-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
 }
 
 /* ── Shimmer skeletons ────────────────────────── */

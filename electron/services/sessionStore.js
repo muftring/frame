@@ -86,6 +86,9 @@ function initSchema() {
   if (!filesCols.includes('trashed_at')) {
     db.prepare('ALTER TABLE files ADD COLUMN trashed_at INTEGER DEFAULT NULL').run()
   }
+  if (!filesCols.includes('tags')) {
+    db.prepare("ALTER TABLE files ADD COLUMN tags TEXT DEFAULT '[]'").run()
+  }
 
   seedDefaultAlbums()
 }
@@ -370,6 +373,16 @@ function fileUpdateStatus(fileId, status) {
   }
 }
 
+function fileUpdateTags(fileId, tags) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET tags = ? WHERE id = ?').run(JSON.stringify(tags), fileId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function fileUpdateTrashedPath(fileId, newPath, trashedAt) {
   try {
     const db = getDb()
@@ -454,7 +467,7 @@ function fileListBySession(sessionId, filters = {}) {
 // Whitelists prevent SQL injection when building dynamic WHERE clauses.
 const ALLOWED_RULE_FIELDS = new Set([
   'status', 'rating', 'exif_ts', 'filename',
-  'session_id', 'group_id', 'published_to', 'size_bytes'
+  'session_id', 'group_id', 'published_to', 'size_bytes', 'tags'
 ])
 
 const ALLOWED_SORT_COLS = new Set(['exif_ts', 'filename', 'rating'])
@@ -482,6 +495,10 @@ function buildWhereClause(rules) {
         // exif_ts is stored as Unix ms; strftime('%s','now') returns Unix seconds.
         conditions.push(`${col} >= (CAST(strftime('%s','now') AS INTEGER) - ? * 86400) * 1000`)
         params.push(rule.value)
+        break
+      case 'has_tag':
+        conditions.push(`EXISTS (SELECT 1 FROM json_each(tags) WHERE value = ?)`)
+        params.push(String(rule.value))
         break
       default: break
     }
@@ -680,6 +697,7 @@ module.exports = {
   groupList,
   fileUpsert,
   fileUpdateStatus,
+  fileUpdateTags,
   fileUpdateTrashedPath,
   fileUpdatePublished,
   fileListByGroup,

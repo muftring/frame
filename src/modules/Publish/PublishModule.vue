@@ -73,13 +73,22 @@
         </div>
       </section>
 
-      <!-- iCloud info -->
+      <!-- iCloud options -->
       <section v-if="selectedProvider === 'icloud'" class="section">
         <h3>iCloud Photos</h3>
         <div class="section-body">
           <div class="info-box">
             Files will be imported into the Photos app on this Mac.
             If iCloud Photos is enabled, they will sync automatically.
+          </div>
+          <div class="field-row">
+            <label>Album name <span class="field-hint">(optional — creates album if it doesn't exist)</span></label>
+            <input
+              type="text"
+              class="text-input"
+              v-model="providerOptions.albumName"
+              placeholder="e.g. Lacrosse 2026-06"
+            />
           </div>
         </div>
       </section>
@@ -169,9 +178,11 @@ export default {
       providerOptions: {
         cliPath: '',
         tag: '',
-        uploadedBy: ''
+        uploadedBy: '',
+        albumName: ''
       },
       selectedFiles: [],
+      fileTags: {},
       sourceFolder: null,
       uploading: false,
       uploadDone: false,
@@ -225,6 +236,7 @@ export default {
       const result = await window.api.invoke('dialog:openFile')
       if (result) {
         this.selectedFiles = [result]
+        this.fileTags = {}
         this.sourceFolder = null
       }
     },
@@ -242,6 +254,7 @@ export default {
         return
       }
       this.selectedFiles = files.map(f => f.path)
+      this.fileTags = {}
       this.sourceFolder = folder
     },
     async loadSessionKeptFiles() {
@@ -252,9 +265,19 @@ export default {
       }
       this.selectedFiles = files.map(f => f.full_path)
       this.sourceFolder = null
+      // Build per-file tags map for iCloud keyword publishing
+      const fileTags = {}
+      for (const f of files) {
+        try {
+          const tags = JSON.parse(f.tags || '[]')
+          if (tags.length) fileTags[f.full_path] = tags
+        } catch { /* empty */ }
+      }
+      this.fileTags = fileTags
     },
     clearFiles() {
       this.selectedFiles = []
+      this.fileTags = {}
       this.sourceFolder = null
     },
     async pickCliPath() {
@@ -273,7 +296,7 @@ export default {
         'upload:run',
         this.selectedProvider,
         this.selectedFiles,
-        { ...this.providerOptions }
+        { ...this.providerOptions, fileTags: this.fileTags }
       )
 
       this.uploading = false
@@ -451,6 +474,12 @@ export default {
 .field-row label {
   font-size: 12px;
   color: var(--text2);
+}
+
+.field-hint {
+  font-size: 11px;
+  opacity: 0.6;
+  font-weight: 400;
 }
 
 .field-input {

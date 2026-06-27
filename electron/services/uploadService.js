@@ -17,7 +17,9 @@ const PROVIDERS = {
     name: 'iCloud Photos',
     description: 'Import into Photos.app (syncs to iCloud)',
     platform: 'darwin',
-    fields: []
+    fields: [
+      { key: 'albumName', label: 'Album name', type: 'text', default: '' }
+    ]
   }
 }
 
@@ -105,49 +107,112 @@ function uploadArchivault(files, options, sender) {
   })
 }
 
-function uploadIcloud(files, options, sender) {
-  return new Promise(async (resolve) => {
-    let uploaded = 0
-    const errors = []
+function escapeAppleScript(str) {
+  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
 
-    for (const filePath of files) {
-      const escapedPath = filePath.replace(/"/g, '\\"')
-      const script = `tell application "Photos" to import POSIX file "${escapedPath}"`
+function buildImportScript(filePath, albumName, tags) {
+  const ep = escapeAppleScript(filePath)
+  const hasTags = Array.isArray(tags) && tags.length > 0
+  const kwList = hasTags
+    ? tags.map(t => `"${escapeAppleScript(t)}"`).join(', ')
+    : null
 
-      try {
-        await new Promise((res, rej) => {
-          execFile('osascript', ['-e', script], { timeout: 30000 }, (err, stdout, stderr) => {
-            if (err) {
-              rej(err)
-            } else {
-              res()
-            }
-          })
+  if (albumName && hasTags) {
+    const ea = escapeAppleScript(albumName)
+    return [
+      'tell application "Photos"',
+      `  set theItems to import {POSIX file "${ep}"} into album named "${ea}" skip check duplicates no`,
+      '  if (count of theItems) > 0 then',
+      `    set keywords of item 1 of theItems to {${kwList}}`,
+      '  end if',
+      'end tell'
+    ].join('\n')
+  }
+
+  if (albumName) {
+    const ea = escapeAppleScript(albumName)
+    return `tell application "Photos" to import {POSIX file "${ep}"} into album named "${ea}" skip check duplicates no`
+  }
+
+  if (hasTags) {
+    return [
+      'tell application "Photos"',
+      `  set theItems to import {POSIX file "${ep}"}`,
+      '  if (count of theItems) > 0 then',
+      `    set keywords of item 1 of theItems to {${kwList}}`,
+      '  end if',
+      'end tell'
+    ].join('\n')
+  }
+
+  return `tell application "Photos" to import {POSIX file "${ep}"}`
+}
+
+async function uploadIcloud(files, options, sender) {
+  let uploaded = 0
+  const errors = []
+  const albumName = options.albumName?.trim() || null
+  const fileTags = options.fileTags || {}
+
+  // Create album once before the loop if needed
+  if (albumName) {
+    const ea = escapeAppleScript(albumName)
+    const createScript = [
+      'tell application "Photos"',
+      `  if not (exists album named "${ea}") then`,
+      `    make new album with properties {name:"${ea}"}`,
+      '  end if',
+      'end tell'
+    ].join('\n')
+    try {
+      await new Promise((res, rej) => {
+        execFile('osascript', ['-e', createScript], { timeout: 10000 }, (err) => {
+          if (err) rej(err) else res()
         })
-        uploaded++
-        sender.send('upload:progress', {
-          provider: 'icloud',
-          line: `Imported: ${path.basename(filePath)}`,
-          current: uploaded,
-          total: files.length
-        })
-      } catch (err) {
-        errors.push(`${path.basename(filePath)}: ${err.message}`)
-        sender.send('upload:progress', {
-          provider: 'icloud',
-          line: `Failed: ${path.basename(filePath)} — ${err.message}`,
-          current: uploaded,
-          total: files.length
-        })
-      }
+      })
+    } catch (err) {
+      // Non-fatal: continue without album guarantee
+      sender.send('upload:progress', {
+        provider: 'icloud',
+        line: `Warning: could not create album "${albumName}" — ${err.message}`
+      })
     }
+  }
 
-    resolve({
-      success: errors.length === 0,
-      uploaded,
-      errors: errors.length ? errors : undefined
-    })
-  })
+  for (const filePath of files) {
+    const tags = fileTags[filePath] || []
+    const script = buildImportScript(filePath, albumName, tags)
+
+    try {
+      await new Promise((res, rej) => {
+        execFile('osascript', ['-e', script], { timeout: 30000 }, (err) => {
+          if (err) rej(err) else res()
+        })
+      })
+      uploaded++
+      sender.send('upload:progress', {
+        provider: 'icloud',
+        line: `Imported: ${path.basename(filePath)}`,
+        current: uploaded,
+        total: files.length
+      })
+    } catch (err) {
+      errors.push(`${path.basename(filePath)}: ${err.message}`)
+      sender.send('upload:progress', {
+        provider: 'icloud',
+        line: `Failed: ${path.basename(filePath)} — ${err.message}`,
+        current: uploaded,
+        total: files.length
+      })
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    uploaded,
+    errors: errors.length ? errors : undefined
+  }
 }
 
 async function upload(providerId, files, options, sender) {
