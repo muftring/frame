@@ -168,7 +168,7 @@ async function uploadIcloud(files, options, sender) {
     try {
       await new Promise((res, rej) => {
         execFile('osascript', ['-e', createScript], { timeout: 10000 }, (err) => {
-          if (err) rej(err) else res()
+          err ? rej(err) : res()
         })
       })
     } catch (err) {
@@ -187,7 +187,7 @@ async function uploadIcloud(files, options, sender) {
     try {
       await new Promise((res, rej) => {
         execFile('osascript', ['-e', script], { timeout: 30000 }, (err) => {
-          if (err) rej(err) else res()
+          err ? rej(err) : res()
         })
       })
       uploaded++
