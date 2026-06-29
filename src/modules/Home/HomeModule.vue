@@ -1,7 +1,33 @@
 <template>
   <div class="home">
 
-    <!-- Recent Sessions -->
+    <!-- Left: New Session -->
+    <aside class="home-sidebar">
+      <div class="sidebar-label">New Session</div>
+      <div class="ns-form">
+        <input
+          v-model="newName"
+          class="ns-name-input"
+          placeholder="Session name"
+          @keydown.enter="startImport"
+        />
+        <div class="ns-source-block">
+          <button class="btn-secondary ns-pick-btn" @click="pickSource">Pick source folder</button>
+          <span class="ns-source-path" :class="{ 'ns-no-source': !newSource }">
+            {{ newSource || 'No folder selected' }}
+          </span>
+        </div>
+        <button
+          class="btn-primary ns-start-btn"
+          :disabled="!newName.trim() || starting"
+          @click="startImport"
+        >
+          {{ starting ? 'Creating…' : 'Start import →' }}
+        </button>
+      </div>
+    </aside>
+
+    <!-- Right: Sessions -->
     <section class="home-sessions">
 
       <div v-if="loading" class="home-loading">
@@ -126,35 +152,6 @@
       </template>
     </section>
 
-    <!-- Start New Session -->
-    <div class="new-session-card">
-      <h2 class="home-section-title">Start New Session</h2>
-      <div class="ns-form">
-        <div class="ns-row">
-          <input
-            v-model="newName"
-            class="ns-name-input"
-            placeholder="Session name"
-            @keydown.enter="startImport"
-          />
-        </div>
-        <div class="ns-row ns-source-row">
-          <span class="ns-source-path" :class="{ 'ns-no-source': !newSource }">
-            {{ newSource || 'No source folder selected' }}
-          </span>
-          <button class="btn-secondary" @click="pickSource">Pick folder</button>
-        </div>
-        <div class="ns-row ns-actions-row">
-          <button
-            class="btn-primary"
-            :disabled="!newName.trim() || starting"
-            @click="startImport"
-          >
-            {{ starting ? 'Creating…' : 'Start import →' }}
-          </button>
-        </div>
-      </div>
-    </div>
 
   </div>
 </template>
@@ -274,16 +271,57 @@ export default {
 <style scoped>
 .home {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 
+/* ── Left sidebar ─────────────────────────────── */
+.home-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.sidebar-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+.ns-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ns-source-block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ns-pick-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.ns-start-btn {
+  width: 100%;
+}
+
 /* ── Sessions section ─────────────────────────── */
 .home-sessions {
   flex: 1;
-  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   padding: 28px 32px 16px;
 }
@@ -557,36 +595,17 @@ export default {
   margin-top: 10px;
 }
 
-/* ── New Session card ─────────────────────────── */
-.new-session-card {
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  padding: 20px 32px 24px;
-}
-
-.ns-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 640px;
-}
-
-.ns-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
+/* ── New Session form fields ──────────────────── */
 .ns-name-input {
-  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-size: 14px;
+  font-size: 13px;
   font-family: inherit;
-  padding: 8px 12px;
+  padding: 7px 10px;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -595,27 +614,18 @@ export default {
   border-color: var(--accent);
 }
 
-.ns-source-row {
-  justify-content: space-between;
-}
-
 .ns-source-path {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
-  min-width: 0;
+  display: block;
 }
 
 .ns-no-source {
-  opacity: 0.45;
+  opacity: 0.4;
   font-style: italic;
-}
-
-.ns-actions-row {
-  justify-content: flex-end;
 }
 
 .btn-primary {
