@@ -3,8 +3,18 @@ const fs = require('fs/promises')
 const path = require('path')
 const crypto = require('crypto')
 const os = require('os')
+const { execFile } = require('child_process')
+const { promisify } = require('util')
+
+const execFileAsync = promisify(execFile)
 
 const CACHE_DIR = path.join(os.homedir(), '.frame', 'thumbcache')
+
+// macOS can't decode HEIC/HEIF through sharp's bundled libvips (no HEVC
+// support in the prebuilt binary), so HEIC/HEIF sources are converted to a
+// cached JPEG via the system `sips` tool before being handed to sharp.
+const HEIC_CACHE_DIR = path.join(os.homedir(), '.frame', 'heiccache')
+const HEIC_EXTENSIONS = new Set(['heic', 'heif'])
 
 const PLACEHOLDER = 'data:image/svg+xml;base64,' + Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150">' +
@@ -21,6 +31,31 @@ function thumbHash(filePath, modifiedMs) {
   return crypto.createHash('sha256')
     .update(filePath + ':' + modifiedMs)
     .digest('hex')
+}
+
+function isHeic(filePath) {
+  return HEIC_EXTENSIONS.has(path.extname(filePath).toLowerCase().slice(1))
+}
+
+// Resolves the path sharp should actually read: the original file, or a
+// cached JPEG conversion for HEIC/HEIF sources.
+async function sharpSource(filePath) {
+  if (!isHeic(filePath)) return filePath
+
+  const stat = await fs.stat(filePath)
+  const hash = thumbHash(filePath, stat.mtimeMs)
+  const cachePath = path.join(HEIC_CACHE_DIR, hash + '.jpg')
+
+  try {
+    await fs.access(cachePath)
+    return cachePath
+  } catch {
+    // not cached yet
+  }
+
+  await fs.mkdir(HEIC_CACHE_DIR, { recursive: true })
+  await execFileAsync('sips', ['-s', 'format', 'jpeg', filePath, '--out', cachePath])
+  return cachePath
 }
 
 async function thumbnail(filePath, size) {
@@ -41,7 +76,7 @@ async function thumbnail(filePath, size) {
 
     let buf
     try {
-      buf = await sharp(filePath)
+      buf = await sharp(await sharpSource(filePath))
         .rotate()
         .resize(w, h, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80 })
@@ -59,7 +94,7 @@ async function thumbnail(filePath, size) {
 
 async function rotate(filePath, degrees, outputPath) {
   try {
-    const buf = await sharp(filePath)
+    const buf = await sharp(await sharpSource(filePath))
       .rotate(degrees)
       .toBuffer()
     await fs.mkdir(path.dirname(outputPath), { recursive: true })
@@ -72,7 +107,7 @@ async function rotate(filePath, degrees, outputPath) {
 
 async function crop(filePath, region, outputPath) {
   try {
-    const buf = await sharp(filePath)
+    const buf = await sharp(await sharpSource(filePath))
       .extract({
         left: region.x,
         top: region.y,
@@ -90,12 +125,12 @@ async function crop(filePath, region, outputPath) {
 
 async function getMetadata(filePath) {
   try {
-    const meta = await sharp(filePath).metadata()
+    const meta = await sharp(await sharpSource(filePath)).metadata()
     const stat = await fs.stat(filePath)
     return {
       width: meta.width,
       height: meta.height,
-      format: meta.format,
+      format: isHeic(filePath) ? path.extname(filePath).toLowerCase().slice(1) : meta.format,
       size: stat.size,
       exif: meta.exif ? parseFullExif(meta.exif) : {}
     }
@@ -106,7 +141,7 @@ async function getMetadata(filePath) {
 
 async function flip(filePath, direction, outputPath) {
   try {
-    let pipeline = sharp(filePath)
+    let pipeline = sharp(await sharpSource(filePath))
     if (direction === 'horizontal') pipeline = pipeline.flop()
     else pipeline = pipeline.flip()
     const buf = await pipeline.toBuffer()
@@ -357,8 +392,9 @@ function parseFullExif(exifBuf) {
 
 async function getFullMetadata(filePath) {
   try {
+    const source = await sharpSource(filePath)
     const [meta, stat] = await Promise.all([
-      sharp(filePath).metadata(),
+      sharp(source).metadata(),
       fs.stat(filePath)
     ])
 
@@ -378,7 +414,7 @@ async function getFullMetadata(filePath) {
       filename: path.basename(filePath),
       fullPath: filePath,
       sizeBytes: stat.size,
-      format: meta.format || null,
+      format: isHeic(filePath) ? path.extname(filePath).toLowerCase().slice(1) : (meta.format || null),
       dimensions: { width: w, height: h, megapixels },
       exif
     }
@@ -392,7 +428,7 @@ async function getFullMetadata(filePath) {
 async function getMetadataBatch(filePaths) {
   return Promise.all(filePaths.map(async (fp) => {
     try {
-      const meta = await sharp(fp).metadata()
+      const meta = await sharp(await sharpSource(fp)).metadata()
       let dateTimeOriginal = null
       let iso = null
       let aperture = null

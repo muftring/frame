@@ -4,7 +4,7 @@
     <div class="toolbar">
       <button v-if="!sessionMode" class="btn" @click="openFolder">Open Folder</button>
       <span v-if="sessionMode" class="session-label">{{ session.name }}</span>
-      <span v-else-if="folderPath" class="folder-name">{{ folderDisplayName }}</span>
+      <span v-else-if="folderPath" class="folder-name" :title="folderPath">{{ folderDisplayName }}</span>
       <div class="toolbar-stats" v-if="images.length">
         <span>{{ images.length }} total</span>
         <span class="stat-sep">|</span>
@@ -475,6 +475,9 @@ export default {
   font-size: 13px;
   color: var(--text2);
   font-family: 'SF Mono', 'Menlo', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .session-label {
