@@ -126,26 +126,39 @@ function parseTiffExif(buf) {
 
 // --- Public API ---
 
-async function scanFolder(folderPath) {
-  try {
-    const entries = await fs.readdir(folderPath, { withFileTypes: true })
-    const results = []
+// Dot-prefixed directories are skipped during recursion: this excludes
+// .frame-trash (so trashed photos don't reappear as untriaged) as well as
+// OS/volume housekeeping folders like .Trashes and .Spotlight-V100 that
+// show up on external disks and memory cards.
+async function scanDir(dirPath, results) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true })
 
-    for (const entry of entries) {
-      if (!entry.isFile()) continue
-      const ext = getExtension(entry.name)
-      if (!IMAGE_EXTENSIONS.has(ext)) continue
-
-      const fullPath = path.join(folderPath, entry.name)
-      const stat = await fs.stat(fullPath)
-      results.push({
-        name: entry.name,
-        path: fullPath,
-        size: stat.size,
-        modifiedMs: stat.mtimeMs
-      })
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('.')) continue
+      await scanDir(path.join(dirPath, entry.name), results)
+      continue
     }
 
+    if (!entry.isFile()) continue
+    const ext = getExtension(entry.name)
+    if (!IMAGE_EXTENSIONS.has(ext)) continue
+
+    const fullPath = path.join(dirPath, entry.name)
+    const stat = await fs.stat(fullPath)
+    results.push({
+      name: entry.name,
+      path: fullPath,
+      size: stat.size,
+      modifiedMs: stat.mtimeMs
+    })
+  }
+}
+
+async function scanFolder(folderPath) {
+  try {
+    const results = []
+    await scanDir(folderPath, results)
     return results
   } catch (err) {
     return { error: err.message }
