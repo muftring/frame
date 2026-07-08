@@ -5,7 +5,7 @@
     <div class="gallery-toolbar">
       <button class="btn" @click="openFolder">Open Folder</button>
       <span v-if="activeLabel" class="folder-name">{{ activeLabel }}</span>
-      <span v-else-if="folderPath" class="folder-name">{{ folderDisplayName }}</span>
+      <span v-else-if="folderPath" class="folder-name" :title="folderPath">{{ folderDisplayName }}</span>
       <span v-if="images.length" class="image-count">{{ images.length }} images</span>
     </div>
 
