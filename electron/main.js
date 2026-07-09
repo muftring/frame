@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, protocol, net } = require('electron')
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, dialog, protocol, net } = require('electron')
 const path = require('path')
 const url = require('url')
 const fileSystem = require('./services/fileSystem')
@@ -8,6 +8,12 @@ const uploadService = require('./services/uploadService')
 const sessionStore = require('./services/sessionStore')
 
 const isDev = !app.isPackaged
+const REPO_URL = 'https://github.com/muftring/frame'
+
+app.setName('Frame')
+
+let mainWindow = null
+let tray = null
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-file', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
@@ -254,12 +260,110 @@ async function createWindow() {
   }
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
 
   if (isDev) {
     win.loadURL('http://localhost:5173')
   } else {
     win.loadFile(path.join(__dirname, '..', 'dist', 'renderer', 'index.html'))
   }
+
+  mainWindow = win
+}
+
+function showMainWindow() {
+  if (mainWindow) {
+    mainWindow.show()
+    mainWindow.focus()
+  } else {
+    createWindow()
+  }
+}
+
+function buildMenu() {
+  const isMac = process.platform === 'darwin'
+
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [{ type: 'separator' }, { role: 'front' }] : [{ role: 'close' }])
+      ]
+    },
+    {
+      role: 'help',
+      submenu: [
+        { label: 'Frame on GitHub', click: () => shell.openExternal(REPO_URL) }
+      ]
+    }
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+function setupAboutPanel() {
+  app.setAboutPanelOptions({
+    applicationName: 'Frame',
+    applicationVersion: app.getVersion(),
+    copyright: `Created by Michael Uftring\n${REPO_URL}\nMIT License\n\n© ${new Date().getFullYear()} Michael Uftring`,
+    iconPath: path.join(__dirname, 'assets', 'appIcon.png')
+  })
+}
+
+function buildTray() {
+  const image = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayIconTemplate.png'))
+  image.setTemplateImage(true)
+  tray = new Tray(image)
+  tray.setToolTip('Frame')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show Frame', click: showMainWindow },
+    { type: 'separator' },
+    { label: 'Quit Frame', role: 'quit' }
+  ]))
 }
 
 app.whenReady().then(async () => {
@@ -270,6 +374,14 @@ app.whenReady().then(async () => {
   })
   await imageProcessor.ensureCacheDir()
   await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
+
+  if (isDev && process.platform === 'darwin') {
+    app.dock.setIcon(path.join(__dirname, 'assets', 'appIcon.png'))
+  }
+
+  setupAboutPanel()
+  buildMenu()
+  buildTray()
   await createWindow()
 })
 
