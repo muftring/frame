@@ -78,6 +78,16 @@ function initSchema() {
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS tag_definitions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL UNIQUE,
+      label       TEXT NOT NULL,
+      color       TEXT NOT NULL,
+      icon        TEXT,
+      shortcut    TEXT,
+      created_at  INTEGER NOT NULL
+    );
   `)
   // migrations for columns added after initial release
   try { db.prepare('ALTER TABLE sessions ADD COLUMN summary TEXT').run() } catch { /* already exists */ }
@@ -89,8 +99,12 @@ function initSchema() {
   if (!filesCols.includes('tags')) {
     db.prepare("ALTER TABLE files ADD COLUMN tags TEXT DEFAULT '[]'").run()
   }
+  if (!filesCols.includes('updated_at')) {
+    db.prepare('ALTER TABLE files ADD COLUMN updated_at INTEGER').run()
+  }
 
   seedDefaultAlbums()
+  seedDefaultTags()
 }
 
 function seedDefaultAlbums() {
@@ -111,6 +125,15 @@ function seedDefaultAlbums() {
   for (const d of defaults) {
     ins.run(d.name, 'global', JSON.stringify(d.rules), 'exif_ts', 'asc', now, now)
   }
+}
+
+function seedDefaultTags() {
+  const count = db.prepare('SELECT COUNT(*) AS cnt FROM tag_definitions').get().cnt
+  if (count > 0) return
+  db.prepare(`
+    INSERT INTO tag_definitions (name, label, color, icon, shortcut, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('bw-candidate', 'B&W Candidate', '#888888', '½', 'b', Date.now())
 }
 
 // --- sessions ---
@@ -462,6 +485,111 @@ function fileListBySession(sessionId, filters = {}) {
   }
 }
 
+// --- tags ---
+
+function tagListDefinitions() {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT * FROM tag_definitions ORDER BY name ASC').all()
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagCreateDefinition(name, label, color, icon, shortcut) {
+  try {
+    const db = getDb()
+    const existing = db.prepare('SELECT id FROM tag_definitions WHERE name = ?').get(name)
+    if (existing) return { error: `Tag "${name}" already exists` }
+    const now = Date.now()
+    const info = db.prepare(`
+      INSERT INTO tag_definitions (name, label, color, icon, shortcut, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, label, color, icon || null, shortcut || null, now)
+    return db.prepare('SELECT * FROM tag_definitions WHERE id = ?').get(info.lastInsertRowid)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function _readFileTags(db, fileId) {
+  const row = db.prepare('SELECT tags FROM files WHERE id = ?').get(fileId)
+  if (!row) return null
+  try { return JSON.parse(row.tags || '[]') } catch { return [] }
+}
+
+function _writeFileTags(db, fileId, tags) {
+  db.prepare('UPDATE files SET tags = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(tags), Date.now(), fileId)
+}
+
+function tagAddToFile(fileId, tagName) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    if (tags === null) return { error: 'File not found' }
+    if (!tags.includes(tagName)) tags.push(tagName)
+    _writeFileTags(db, fileId, tags)
+    return { success: true, tags }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagRemoveFromFile(fileId, tagName) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    if (tags === null) return { error: 'File not found' }
+    const next = tags.filter(t => t !== tagName)
+    _writeFileTags(db, fileId, next)
+    return { success: true, tags: next }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagToggleOnFile(fileId, tagName) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    if (tags === null) return { error: 'File not found' }
+    const present = tags.includes(tagName)
+    const next = present ? tags.filter(t => t !== tagName) : [...tags, tagName]
+    _writeFileTags(db, fileId, next)
+    return { success: true, tags: next, added: !present }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagListByTag(tagName, sessionId) {
+  try {
+    const db = getDb()
+    const conditions = ['EXISTS (SELECT 1 FROM json_each(tags) WHERE value = ?)']
+    const values = [tagName]
+    if (sessionId != null) {
+      conditions.push('session_id = ?')
+      values.push(sessionId)
+    }
+    return db.prepare(
+      `SELECT * FROM files WHERE ${conditions.join(' AND ')} ORDER BY exif_ts ASC`
+    ).all(...values)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagListByFile(fileId) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    return tags || []
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 // --- smart albums ---
 
 // Whitelists prevent SQL injection when building dynamic WHERE clauses.
@@ -704,6 +832,13 @@ module.exports = {
   fileListBySession,
   fileGetByPath,
   fileSetRating,
+  tagListDefinitions,
+  tagCreateDefinition,
+  tagAddToFile,
+  tagRemoveFromFile,
+  tagToggleOnFile,
+  tagListByTag,
+  tagListByFile,
   albumCreate,
   albumList,
   albumGet,

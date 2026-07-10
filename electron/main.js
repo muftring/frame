@@ -184,6 +184,15 @@ ipcMain.handle('file:listBySession', (_, sessionId, filters) =>
 ipcMain.handle('file:getByPath', (_, filePath) => sessionStore.fileGetByPath(filePath))
 ipcMain.handle('file:setRating', (_, fileId, rating) => sessionStore.fileSetRating(fileId, rating))
 
+ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())
+ipcMain.handle('tag:createDefinition', (_, name, label, color, icon, shortcut) =>
+  sessionStore.tagCreateDefinition(name, label, color, icon, shortcut))
+ipcMain.handle('tag:addToFile', (_, fileId, tagName) => sessionStore.tagAddToFile(fileId, tagName))
+ipcMain.handle('tag:removeFromFile', (_, fileId, tagName) => sessionStore.tagRemoveFromFile(fileId, tagName))
+ipcMain.handle('tag:toggleOnFile', (_, fileId, tagName) => sessionStore.tagToggleOnFile(fileId, tagName))
+ipcMain.handle('tag:listByTag', (_, tagName, sessionId) => sessionStore.tagListByTag(tagName, sessionId))
+ipcMain.handle('tag:listByFile', (_, fileId) => sessionStore.tagListByFile(fileId))
+
 ipcMain.handle('album:create', (_, name, rules, scope, sessionId, sortBy, sortDir) =>
   sessionStore.albumCreate(name, rules, scope, sessionId, sortBy, sortDir))
 ipcMain.handle('album:list', (_, scope, sessionId) => sessionStore.albumList(scope, sessionId))
