@@ -133,6 +133,38 @@
             >★</button>
           </span>
         </div>
+        <div class="meta-row def-tags-row">
+          <span class="meta-label">Tags</span>
+          <span class="meta-value def-tags-value">
+            <span v-if="!definitionTags.length" class="meta-value-dash">—</span>
+            <span
+              v-for="t in definitionTags"
+              :key="t.name"
+              class="def-tag-pill"
+              :style="{ color: t.color, borderColor: t.color }"
+            >{{ t.label }}</span>
+            <span class="def-tag-add-wrap">
+              <button
+                class="def-tag-add-btn"
+                :disabled="!fileRecord"
+                @click="tagDropdownOpen = !tagDropdownOpen"
+              >+ tag</button>
+              <div v-if="tagDropdownOpen" class="def-tag-dropdown">
+                <div
+                  v-for="def in tagDefinitions"
+                  :key="def.name"
+                  class="def-tag-dropdown-item"
+                  :class="{ active: tags.includes(def.name) }"
+                  @click="toggleDefinitionTag(def)"
+                >
+                  <span class="def-tag-dot" :style="{ background: def.color }"></span>
+                  {{ def.label }}
+                </div>
+                <div v-if="!tagDefinitions.length" class="def-tag-dropdown-empty">No tags defined</div>
+              </div>
+            </span>
+          </span>
+        </div>
 
         <!-- ── TAGS ── -->
         <div class="section-header">TAGS</div>
@@ -200,12 +232,17 @@ export default {
       copied: false,
       _copyTimer: null,
       tags: [],
-      newTagInput: ''
+      newTagInput: '',
+      tagDefinitions: [],
+      tagDropdownOpen: false
     }
   },
   computed: {
     exif() {
       return this.metadata?.exif || {}
+    },
+    definitionTags() {
+      return this.tagDefinitions.filter(def => this.tags.includes(def.name))
     },
     statusClass() {
       const s = this.fileRecord?.status || 'unreviewed'
@@ -237,6 +274,10 @@ export default {
       if (v && !this.metadata) this.loadData()
     }
   },
+  async mounted() {
+    const defs = await window.api.invoke('tag:listDefinitions')
+    if (Array.isArray(defs)) this.tagDefinitions = defs
+  },
   beforeUnmount() {
     clearTimeout(this._copyTimer)
   },
@@ -246,6 +287,7 @@ export default {
       this.loading = true
       this.metadata = null
       this.fileRecord = null
+      this.tagDropdownOpen = false
 
       const [meta, rec] = await Promise.all([
         window.api.invoke('img:getFullMetadata', this.image.path),
@@ -328,6 +370,13 @@ export default {
       if (this.fileRecord) {
         await window.api.invoke('file:updateTags', this.fileRecord.id, newTags)
       }
+    },
+    async toggleDefinitionTag(def) {
+      if (!this.fileRecord) return
+      const result = await window.api.invoke('tag:toggleOnFile', this.fileRecord.id, def.name)
+      if (!result || result.error) return
+      this.tags = result.tags
+      this.tagDropdownOpen = false
     }
   }
 }
@@ -478,6 +527,101 @@ export default {
 .star-btn:hover {
   color: #c9a84c;
   transform: scale(1.15);
+}
+
+/* ── Frame-status tag pills (tag_definitions driven) ──────────── */
+.def-tags-row {
+  align-items: center;
+  position: relative;
+}
+
+.def-tags-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.meta-value-dash {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.def-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.def-tag-add-wrap {
+  position: relative;
+}
+
+.def-tag-add-btn {
+  background: none;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.def-tag-add-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.def-tag-add-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.def-tag-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: rgba(40, 40, 40, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 150px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+.def-tag-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.def-tag-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.def-tag-dropdown-item.active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.def-tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.def-tag-dropdown-empty {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
 }
 
 /* ── Tags ─────────────────────────────────────── */

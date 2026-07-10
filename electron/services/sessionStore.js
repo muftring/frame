@@ -104,6 +104,7 @@ function initSchema() {
   }
 
   seedDefaultAlbums()
+  seedBwCandidatesAlbum()
   seedDefaultTags()
 }
 
@@ -121,10 +122,24 @@ function seedDefaultAlbums() {
     { name: '5 Stars',          rules: [{ field: 'rating',  operator: 'gte',          value: 5         }] },
     { name: 'This Week',        rules: [{ field: 'exif_ts', operator: 'in_last_days', value: 7         }] },
     { name: 'Recently Deleted', rules: [{ field: 'status',  operator: 'eq',           value: 'deleted' }] },
+    { name: 'B&W Candidates',   rules: [{ field: 'tags',    operator: 'contains',     value: 'bw-candidate' }] },
   ]
   for (const d of defaults) {
     ins.run(d.name, 'global', JSON.stringify(d.rules), 'exif_ts', 'asc', now, now)
   }
+}
+
+// Targeted (not bulk) seed so installs that already had smart_albums
+// populated before this album existed still pick it up.
+function seedBwCandidatesAlbum() {
+  const existing = db.prepare("SELECT id FROM smart_albums WHERE name = 'B&W Candidates'").get()
+  if (existing) return
+  const now = Date.now()
+  const rules = [{ field: 'tags', operator: 'contains', value: 'bw-candidate' }]
+  db.prepare(`
+    INSERT INTO smart_albums (name, scope, rules, sort_by, sort_dir, created_at, updated_at)
+    VALUES (?, 'global', ?, 'exif_ts', 'asc', ?, ?)
+  `).run('B&W Candidates', JSON.stringify(rules), now, now)
 }
 
 function seedDefaultTags() {
@@ -600,6 +615,12 @@ const ALLOWED_RULE_FIELDS = new Set([
 
 const ALLOWED_SORT_COLS = new Set(['exif_ts', 'filename', 'rating'])
 
+// Fields that store a JSON array (e.g. '["bw-candidate","hero-shot"]') rather
+// than plain text. "contains"/"not_contains" on these fields match a whole
+// array element, not an arbitrary substring — otherwise a search for tag
+// "bw" would false-positive on "bw-candidate".
+const JSON_ARRAY_FIELDS = new Set(['tags', 'published_to'])
+
 // Returns { sql, params } for a rules array (all rules ANDed together).
 function buildWhereClause(rules) {
   const conditions = []
@@ -609,6 +630,7 @@ function buildWhereClause(rules) {
     if (!ALLOWED_RULE_FIELDS.has(rule.field)) continue
 
     const col = rule.field
+    const isJsonArray = JSON_ARRAY_FIELDS.has(col)
 
     switch (rule.operator) {
       case 'eq':           conditions.push(`${col} = ?`);         params.push(rule.value); break
@@ -617,8 +639,19 @@ function buildWhereClause(rules) {
       case 'lt':           conditions.push(`${col} < ?`);         params.push(rule.value); break
       case 'gte':          conditions.push(`${col} >= ?`);        params.push(rule.value); break
       case 'lte':          conditions.push(`${col} <= ?`);        params.push(rule.value); break
-      case 'contains':     conditions.push(`${col} LIKE ?`);      params.push('%' + rule.value + '%'); break
-      case 'not_contains': conditions.push(`${col} NOT LIKE ?`);  params.push('%' + rule.value + '%'); break
+      case 'contains':
+        conditions.push(`${col} LIKE ?`)
+        params.push(isJsonArray ? '%"' + rule.value + '"%' : '%' + rule.value + '%')
+        break
+      case 'not_contains':
+        if (isJsonArray) {
+          conditions.push(`(${col} NOT LIKE ? OR ${col} IS NULL OR ${col} = '[]')`)
+          params.push('%"' + rule.value + '"%')
+        } else {
+          conditions.push(`${col} NOT LIKE ?`)
+          params.push('%' + rule.value + '%')
+        }
+        break
       case 'in_last_days':
         // exif_ts is stored as Unix ms; strftime('%s','now') returns Unix seconds.
         conditions.push(`${col} >= (CAST(strftime('%s','now') AS INTEGER) - ? * 86400) * 1000`)

@@ -5,8 +5,15 @@
         <button class="nav-arrow nav-left" @click.stop="$emit('prev')" :disabled="!hasPrev">&lsaquo;</button>
         <div class="viewer-image-area">
           <transition name="img-fade" mode="out-in">
-            <img :key="image.path" :src="imageUrl" class="viewer-img" @error="handleError" />
+            <img
+              :key="image.path"
+              :src="imageUrl"
+              class="viewer-img"
+              :class="{ 'bw-active': bwPreviewActive }"
+              @error="handleError"
+            />
           </transition>
+          <div v-if="bwPreviewActive" class="bw-preview-badge">B&amp;W Preview</div>
         </div>
         <button class="nav-arrow nav-right" @click.stop="$emit('next')" :disabled="!hasNext">&rsaquo;</button>
       </div>
@@ -14,6 +21,18 @@
       <div class="viewer-bar">
         <span class="bar-filename">{{ image.name }}</span>
         <span class="bar-meta">{{ formatSize(image.size) }}</span>
+        <button
+          class="bar-bw-btn"
+          :class="{ active: bwPreviewActive }"
+          @click.stop="bwPreviewActive = !bwPreviewActive"
+          title="Toggle B&amp;W preview (P)"
+        >
+          <svg class="bw-icon" viewBox="0 0 16 16" width="14" height="14" fill="none">
+            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+            <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+          </svg>
+          B&amp;W
+        </button>
         <button
           class="bar-info-btn"
           :class="{ active: showMeta }"
@@ -46,7 +65,7 @@ export default {
   },
   emits: ['close', 'prev', 'next'],
   data() {
-    return { showMeta: false }
+    return { showMeta: false, bwPreviewActive: false }
   },
   computed: {
     imageUrl() {
@@ -85,7 +104,17 @@ export default {
         case 'I':
           this.showMeta = !this.showMeta
           break
+        case 'p':
+        case 'P':
+          if (!this.isTypingTarget(e.target)) this.bwPreviewActive = !this.bwPreviewActive
+          break
       }
+    },
+    // Avoid toggling B&W preview while the user is typing (e.g. the
+    // metadata panel's free-text tag input) — "portrait" would otherwise
+    // flip the preview on every "p".
+    isTypingTarget(target) {
+      return !!(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable))
     },
     handleError(e) {
       if (this.image && this.image.thumbnail) {
@@ -127,6 +156,7 @@ export default {
   justify-content: center;
   height: 100%;
   padding: 20px;
+  position: relative;
   transition: padding-right 0.22s ease;
 }
 
@@ -135,6 +165,23 @@ export default {
   max-height: 100%;
   object-fit: contain;
   border-radius: 4px;
+  transition: filter 0.15s ease;
+}
+
+.viewer-img.bw-active {
+  filter: grayscale(100%);
+}
+
+.bw-preview-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  pointer-events: none;
 }
 
 .nav-arrow {
@@ -183,6 +230,31 @@ export default {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
+}
+
+.bar-bw-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.bar-bw-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.bar-bw-btn.active {
+  background: #888888;
+  border-color: #aaaaaa;
+  color: #ffffff;
 }
 
 .bar-info-btn {
