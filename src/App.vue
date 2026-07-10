@@ -112,7 +112,7 @@
     <!-- Toast notifications -->
     <div class="toast-container">
       <transition-group name="toast">
-        <div v-for="t in toasts" :key="t.id" class="toast" :class="'toast-' + t.type">
+        <div v-for="t in toasts" :key="t.id" class="toast" :class="'toast-' + t.type" :style="t.color ? { color: t.color } : null">
           {{ t.message }}
         </div>
       </transition-group>
@@ -352,9 +352,9 @@ export default {
       this.moduleData = { type: 'session-status', sessionId: session.id, status: 'kept' }
       this.currentModule = 'gallery'
     },
-    addToast(message, type = 'info') {
+    addToast(message, type = 'info', color = null) {
       const id = Date.now() + Math.random()
-      this.toasts.push({ id, message, type })
+      this.toasts.push({ id, message, type, color })
       setTimeout(() => {
         this.toasts = this.toasts.filter(t => t.id !== id)
       }, 3000)

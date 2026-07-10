@@ -44,6 +44,14 @@
           <img v-if="img.thumbnail" :src="img.thumbnail" />
           <div v-else class="thumb-placeholder"></div>
           <div v-if="img.status === 'trashed'" class="thumb-del-badge">del</div>
+          <div class="thumb-tag-badges" v-if="img.tags && img.tags.length">
+            <span
+              v-for="tagName in img.tags.slice(0, 2)"
+              :key="tagName"
+              class="thumb-tag-badge"
+              :style="{ color: tagColor(tagName) }"
+            >{{ tagBadgeText(tagName) }}</span>
+          </div>
         </div>
       </div>
 
@@ -55,8 +63,10 @@
             :key="viewerImageUrl"
             :src="viewerImageUrl"
             class="viewer-image"
+            :class="{ 'bw-active': bwPreviewActive }"
             @error="handleImageError"
           />
+          <div v-if="bwPreviewActive" class="bw-preview-badge">B&amp;W Preview</div>
           <div v-if="currentImage && currentImage.status === 'trashed'" class="trashed-overlay">
             <span>Deleted</span>
           </div>
@@ -112,6 +122,18 @@
     <!-- Action bar -->
     <div class="action-bar" v-if="images.length">
       <button class="btn action-btn" @click="prev" :disabled="currentIndex === 0">Prev</button>
+      <button
+        class="btn action-btn bw-toggle-btn"
+        :class="{ active: bwPreviewActive }"
+        @click="toggleBwPreview"
+        title="Toggle B&amp;W preview (P)"
+      >
+        <svg class="bw-icon" viewBox="0 0 16 16" width="14" height="14" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+          <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+        </svg>
+        B&amp;W
+      </button>
       <button class="btn action-btn keep-btn" @click="keep">Keep (K)</button>
       <button class="btn action-btn delete-btn" @click="doTrash">Delete (D)</button>
       <button class="btn action-btn" @click="next" :disabled="currentIndex >= images.length - 1">Next</button>
@@ -172,7 +194,9 @@ export default {
       showCleanupModal: false,
       cleaningUp: false,
       showResumePrompt: false,
-      resumeFileId: null
+      resumeFileId: null,
+      tagDefinitions: [],
+      bwPreviewActive: false
     }
   },
   computed: {
@@ -215,6 +239,13 @@ export default {
     },
     sortAlreadyComplete() {
       return !!this.session?.pipelineState?.sort_complete
+    },
+    tagShortcutMap() {
+      const map = {}
+      for (const def of this.tagDefinitions) {
+        if (def.shortcut) map[def.shortcut.toLowerCase()] = def
+      }
+      return map
     }
   },
   watch: {
@@ -231,6 +262,8 @@ export default {
   async mounted() {
     this._keyHandler = this.handleKeydown.bind(this)
     window.addEventListener('keydown', this._keyHandler)
+    const defs = await window.api.invoke('tag:listDefinitions')
+    if (Array.isArray(defs)) this.tagDefinitions = defs
     if (this.session?.id) {
       await this.loadSessionFiles()
     } else if (this.initialFolder) {
@@ -262,7 +295,8 @@ export default {
               status: f.status === 'deleted' ? 'trashed' : (f.status === 'kept' ? 'kept' : 'pending'),
               trashedAt: f.trashed_at || null,
               groupId: group.id,
-              groupLabel: group.label
+              groupLabel: group.label,
+              tags: (() => { try { return JSON.parse(f.tags || '[]') } catch { return [] } })()
             })
           }
         }
@@ -324,7 +358,8 @@ export default {
         status: 'pending',
         trashedAt: null,
         groupId: null,
-        groupLabel: null
+        groupLabel: null,
+        tags: []
       }))
 
       this.loading = false
@@ -439,7 +474,40 @@ export default {
         case 'k': case 'K': this.keep(); break
         case 'd': case 'D': this.doTrash(); break
         case 'Escape': this.trashPanelOpen = false; break
+        case 'p': case 'P':
+          if (!this.tagShortcutsSuppressed(e)) this.toggleBwPreview()
+          break
+        default: {
+          const tagDef = this.tagShortcutMap[e.key.toLowerCase()]
+          if (tagDef && !this.tagShortcutsSuppressed(e)) this.toggleFileTag(tagDef)
+        }
       }
+    },
+    // B/P shortcuts additionally suppress while typing in a field or with
+    // the trash panel open, unlike the existing Keep/Delete shortcuts.
+    tagShortcutsSuppressed(e) {
+      if (this.trashPanelOpen) return true
+      const target = e.target
+      return !!(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable))
+    },
+    toggleBwPreview() {
+      this.bwPreviewActive = !this.bwPreviewActive
+    },
+    async toggleFileTag(tagDef) {
+      if (!this.currentImage?.fileId) return
+      const result = await window.api.invoke('tag:toggleOnFile', this.currentImage.fileId, tagDef.name)
+      if (!result || result.error) return
+      this.currentImage.tags = result.tags
+      const verb = result.added ? 'Added' : 'Removed'
+      const color = result.added ? tagDef.color : 'var(--text2)'
+      this.toast(`${verb}: "${tagDef.label}"`, 'info', color)
+    },
+    tagColor(tagName) {
+      return this.tagDefinitions.find(d => d.name === tagName)?.color || '#888888'
+    },
+    tagBadgeText(tagName) {
+      if (tagName === 'bw-candidate') return 'B&W'
+      return this.tagDefinitions.find(d => d.name === tagName)?.label || tagName
     },
     handleImageError(e) {
       if (this.currentImage && this.currentImage.thumbnail) {
@@ -625,6 +693,24 @@ export default {
   letter-spacing: 0.04em;
 }
 
+.thumb-tag-badges {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thumb-tag-badge {
+  font-size: 10px;
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.65);
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* Viewer */
 .viewer {
   flex: 1;
@@ -651,6 +737,23 @@ export default {
   max-height: 100%;
   object-fit: contain;
   border-radius: 4px;
+  transition: filter 0.15s ease;
+}
+
+.viewer-image.bw-active {
+  filter: grayscale(100%);
+}
+
+.bw-preview-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  pointer-events: none;
 }
 
 .trashed-overlay {
@@ -725,6 +828,19 @@ export default {
   padding: 8px 22px;
   font-size: 13px;
   font-weight: 500;
+}
+
+.bw-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text2);
+}
+
+.bw-toggle-btn.active {
+  background: #888888;
+  border-color: #aaaaaa;
+  color: #ffffff;
 }
 
 .keep-btn {
