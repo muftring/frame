@@ -59,6 +59,14 @@
             >
               <img v-if="img.thumbnail" :src="img.thumbnail" class="grid-thumb" />
               <div v-else class="grid-placeholder skeleton"></div>
+              <div class="grid-tag-badges" v-if="img.tags && img.tags.length">
+                <span
+                  v-for="tagName in img.tags.slice(0, 2)"
+                  :key="tagName"
+                  class="grid-tag-badge"
+                  :style="{ color: tagColor(tagName) }"
+                >{{ tagBadgeText(tagName) }}</span>
+              </div>
               <div class="grid-label">{{ img.name }}</div>
             </div>
           </div>
@@ -116,7 +124,8 @@ export default {
       observer: null,
       savedScrollTop: 0,
       selectedSource: null,
-      selectedSourceLabel: null
+      selectedSourceLabel: null,
+      tagDefinitions: []
     }
   },
   computed: {
@@ -144,6 +153,9 @@ export default {
   async mounted() {
     const tools = await window.api.invoke('tools:findInstalled')
     this.installedTools = tools
+
+    const defs = await window.api.invoke('tag:listDefinitions')
+    if (Array.isArray(defs)) this.tagDefinitions = defs
 
     if (this.initialSource) {
       const labelMap = { kept: 'Kept', deleted: 'Deleted', unreviewed: 'Unreviewed' }
@@ -200,14 +212,18 @@ export default {
         dbFiles = await window.api.invoke('file:listBySession', source.sessionId, { status: source.status })
       } else if (source.type === 'session-group') {
         dbFiles = await window.api.invoke('file:listByGroup', source.groupId)
+      } else if (source.type === 'session-tag') {
+        dbFiles = await window.api.invoke('tag:listByTag', source.tagName, source.sessionId)
       }
 
       if (Array.isArray(dbFiles)) {
         this.images = dbFiles.map(f => ({
+          fileId: f.id,
           name: f.filename,
           path: f.full_path,
           size: f.size_bytes || 0,
-          thumbnail: null
+          thumbnail: null,
+          tags: (() => { try { return JSON.parse(f.tags || '[]') } catch { return [] } })()
         }))
       }
 
@@ -237,10 +253,12 @@ export default {
       }
 
       this.images = files.map(f => ({
+        fileId: null,
         name: f.name,
         path: f.path,
         size: f.size,
-        thumbnail: null
+        thumbnail: null,
+        tags: []
       }))
 
       this.loading = false
@@ -287,6 +305,14 @@ export default {
     closeViewer()  { this.viewerOpen = false },
     viewerPrev()   { if (this.viewerIndex > 0) this.viewerIndex-- },
     viewerNext()   { if (this.viewerIndex < this.images.length - 1) this.viewerIndex++ },
+
+    tagColor(tagName) {
+      return this.tagDefinitions.find(d => d.name === tagName)?.color || '#888888'
+    },
+    tagBadgeText(tagName) {
+      if (tagName === 'bw-candidate') return 'B&W'
+      return this.tagDefinitions.find(d => d.name === tagName)?.label || tagName
+    },
 
     showContextMenu(e, img) {
       this.ctxImage = img
@@ -465,6 +491,25 @@ export default {
   width: 100%;
   height: 100%;
   background: var(--surface2);
+}
+
+.grid-tag-badges {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 1;
+}
+
+.grid-tag-badge {
+  font-size: 10px;
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.65);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .grid-label {

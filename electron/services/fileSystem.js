@@ -260,6 +260,15 @@ async function createDirectory(dirPath) {
   }
 }
 
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
 module.exports = {
   scanFolder,
   readExif,
@@ -267,5 +276,6 @@ module.exports = {
   moveToTrash,
   restoreFromTrash,
   emptyTrash,
-  createDirectory
+  createDirectory,
+  fileExists
 }

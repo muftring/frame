@@ -131,6 +131,99 @@
         </div>
       </div>
     </section>
+
+    <!-- Section 4: B&W Conversion -->
+    <section class="section">
+      <h3 class="collapsible" @click="bwSectionOpen = !bwSectionOpen">
+        B&amp;W Conversion
+        <span class="collapse-icon">{{ bwSectionOpen ? '▾' : '▸' }}</span>
+      </h3>
+
+      <!-- Always visible, even while the section is collapsed -->
+      <div class="tip-card">
+        <span class="tip-card-icon">💡</span>
+        <div class="tip-card-text">
+          <strong>B&amp;W conversion tip for the Nikon D80:</strong> In Darktable, use the Color Calibration
+          module in B&amp;W filmstock mode. The D80's CCD sensor has strong color channel separation — try
+          boosting the Red channel slightly to brighten skin tones and darken blue skies. Combine with the
+          Tone Equalizer for local contrast.
+        </div>
+      </div>
+
+      <div v-if="bwSectionOpen" class="section-body">
+
+        <!-- Candidate count -->
+        <div class="stat-card">
+          <svg class="bw-stat-icon" viewBox="0 0 16 16" width="20" height="20" fill="none">
+            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+            <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+          </svg>
+          <div class="stat-card-text">
+            <template v-if="session.id">
+              <span v-if="bwCandidates.length">
+                {{ bwCandidates.length }} photo{{ bwCandidates.length === 1 ? '' : 's' }} tagged as B&amp;W
+                Candidates in {{ session.name }}
+              </span>
+              <span v-else>
+                No B&amp;W candidates tagged in this session. Tag photos with B in the Sorter.
+              </span>
+            </template>
+            <template v-else>
+              <span>
+                {{ bwCandidates.length }} photo{{ bwCandidates.length === 1 ? '' : 's' }} tagged as B&amp;W
+                Candidates across all sessions
+              </span>
+              <div class="stat-card-note">Start a session to work with a specific shoot.</div>
+            </template>
+          </div>
+        </div>
+
+        <!-- File list -->
+        <div v-if="bwCandidates.length" class="bw-file-list-wrap">
+          <div class="collapsible bw-file-list-toggle" @click="bwFileListOpen = !bwFileListOpen">
+            <span class="collapse-icon">{{ bwFileListOpen ? '▾' : '▸' }}</span>
+            <span>{{ bwCandidates.length }} file{{ bwCandidates.length === 1 ? '' : 's' }}</span>
+          </div>
+          <div v-if="bwFileListOpen" class="bw-file-list">
+            <div v-for="f in bwCandidatesDisplayed" :key="f.id" class="bw-file-row">
+              <img v-if="bwThumbnails[f.id]" :src="bwThumbnails[f.id]" class="bw-file-thumb" />
+              <div v-else class="bw-file-thumb-placeholder"></div>
+              <span class="bw-file-name">{{ f.filename }}</span>
+              <span v-if="f.groupLabel" class="bw-file-group">{{ f.groupLabel }}</span>
+            </div>
+            <div v-if="bwCandidates.length > 10" class="bw-file-more">
+              and {{ bwCandidates.length - 10 }} more...
+            </div>
+          </div>
+        </div>
+
+        <!-- Darktable style preset -->
+        <div class="bw-preset-block">
+          <label class="row-label-full">Darktable style preset (optional)</label>
+          <div class="picker-row">
+            <button class="btn" @click="pickBwStylePreset">Select .dtstyle</button>
+            <span v-if="bwStylePresetPath" class="path-display">
+              {{ bwStylePresetPath }}
+              <button class="btn-clear" @click="clearBwStylePreset">x</button>
+            </span>
+          </div>
+          <div class="preset-note bw-preset-note">
+            A .dtstyle file saved from Darktable's Style Manager. If provided, Frame will apply it
+            automatically when opening files. Leave blank to apply your B&amp;W style manually in Darktable.
+          </div>
+        </div>
+
+        <!-- Launch -->
+        <div class="launch-row">
+          <button
+            class="btn btn-accent"
+            :disabled="!tools.darktable || !bwCandidates.length || bwLaunching"
+            :title="bwLaunchDisabledReason"
+            @click="launchBwInDarktable"
+          >{{ bwLaunching ? 'Opening…' : 'Open B&W Candidates in Darktable' }}</button>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -153,7 +246,36 @@ export default {
       batchProcessed: 0,
       logLines: [],
       tipsOpen: false,
-      guidePath: null
+      guidePath: null,
+      bwSectionOpen: false,
+      bwFileListOpen: false,
+      bwCandidates: [],
+      bwThumbnails: {},
+      bwStylePresetPath: null,
+      bwLaunching: false
+    }
+  },
+  computed: {
+    bwCandidatesDisplayed() {
+      return this.bwCandidates.slice(0, 10)
+    },
+    bwLaunchDisabledReason() {
+      if (!this.tools.darktable) return 'Darktable not found'
+      if (!this.bwCandidates.length) return 'No B&W candidates in this session'
+      return ''
+    },
+    mostCommonBwGroupFolder() {
+      const counts = {}
+      for (const f of this.bwCandidates) {
+        if (!f.groupFolderPath) continue
+        counts[f.groupFolderPath] = (counts[f.groupFolderPath] || 0) + 1
+      }
+      let best = null
+      let bestCount = 0
+      for (const [folder, count] of Object.entries(counts)) {
+        if (count > bestCount) { best = folder; bestCount = count }
+      }
+      return best
     }
   },
   async mounted() {
@@ -187,6 +309,11 @@ export default {
         }
       } catch { /* ignore */ }
     }
+
+    this.bwStylePresetPath = await window.api.invoke('store:get', 'bwStylePresetPath') || null
+    await this.loadBwCandidates()
+    this.bwSectionOpen = !!(this.session?.id && this.bwCandidates.length)
+    this.loadBwThumbnails()
   },
   beforeUnmount() {
     if (this._progressCleanup) this._progressCleanup()
@@ -299,6 +426,51 @@ export default {
     async openGuide() {
       if (this.guidePath) {
         await window.api.invoke('shell:openPath', this.guidePath)
+      }
+    },
+    async loadBwCandidates() {
+      const sessionId = this.session?.id || null
+      const files = await window.api.invoke('tag:listByTag', 'bw-candidate', sessionId)
+      this.bwCandidates = Array.isArray(files) ? files : []
+    },
+    async loadBwThumbnails() {
+      for (const f of this.bwCandidatesDisplayed) {
+        if (this.bwThumbnails[f.id]) continue
+        const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 48, height: 36 })
+        this.bwThumbnails = { ...this.bwThumbnails, [f.id]: thumb }
+      }
+    },
+    async pickBwStylePreset() {
+      const file = await window.api.invoke('dialog:openDarktableStyle')
+      if (file) {
+        this.bwStylePresetPath = file
+        await window.api.invoke('store:set', 'bwStylePresetPath', file)
+      }
+    },
+    async clearBwStylePreset() {
+      this.bwStylePresetPath = null
+      await window.api.invoke('store:set', 'bwStylePresetPath', null)
+    },
+    async launchBwInDarktable() {
+      if (!this.tools.darktable || !this.bwCandidates.length || this.bwLaunching) return
+      this.bwLaunching = true
+      try {
+        const filePaths = this.bwCandidates.map(f => f.full_path)
+        const presetExists = this.bwStylePresetPath &&
+          await window.api.invoke('fs:fileExists', this.bwStylePresetPath)
+
+        if (presetExists) {
+          const styleName = this.bwStylePresetPath.split('/').pop().replace(/\.dtstyle$/i, '')
+          await window.api.invoke('tools:openFiles', this.tools.darktable, filePaths, styleName)
+        } else if (this.mostCommonBwGroupFolder) {
+          await window.api.invoke('tools:openFolder', this.tools.darktable, this.mostCommonBwGroupFolder)
+        } else {
+          await window.api.invoke('tools:openFiles', this.tools.darktable, filePaths, null)
+        }
+
+        this.toast(`Opening ${filePaths.length} files in Darktable`, 'info')
+      } finally {
+        this.bwLaunching = false
       }
     }
   }
@@ -541,4 +713,141 @@ export default {
   text-decoration: underline;
 }
 .tip-link a:hover { color: #d4b35a; }
+
+/* ── B&W Conversion ───────────────────────────── */
+.stat-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.bw-stat-icon {
+  flex-shrink: 0;
+  color: var(--text2);
+  margin-top: 1px;
+}
+
+.stat-card-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.stat-card-note {
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 4px;
+}
+
+.bw-file-list-wrap {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bw-file-list-toggle {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text2);
+  background: var(--surface);
+}
+
+.bw-file-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+
+.bw-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+}
+
+.bw-file-thumb {
+  width: 48px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.bw-file-thumb-placeholder {
+  width: 48px;
+  height: 36px;
+  border-radius: 3px;
+  background: var(--surface2);
+  flex-shrink: 0;
+}
+
+.bw-file-name {
+  font-size: 12px;
+  color: var(--text);
+  font-family: 'SF Mono', 'Menlo', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.bw-file-group {
+  font-size: 11px;
+  color: var(--text2);
+  flex-shrink: 0;
+}
+
+.bw-file-more {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text2);
+  font-style: italic;
+}
+
+.bw-preset-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row-label-full {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.bw-preset-note {
+  padding-left: 0;
+}
+
+.tip-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.tip-card-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.tip-card-text {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+
+.tip-card-text strong {
+  color: var(--text);
+}
 </style>

@@ -78,6 +78,16 @@ function initSchema() {
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS tag_definitions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL UNIQUE,
+      label       TEXT NOT NULL,
+      color       TEXT NOT NULL,
+      icon        TEXT,
+      shortcut    TEXT,
+      created_at  INTEGER NOT NULL
+    );
   `)
   // migrations for columns added after initial release
   try { db.prepare('ALTER TABLE sessions ADD COLUMN summary TEXT').run() } catch { /* already exists */ }
@@ -89,8 +99,13 @@ function initSchema() {
   if (!filesCols.includes('tags')) {
     db.prepare("ALTER TABLE files ADD COLUMN tags TEXT DEFAULT '[]'").run()
   }
+  if (!filesCols.includes('updated_at')) {
+    db.prepare('ALTER TABLE files ADD COLUMN updated_at INTEGER').run()
+  }
 
   seedDefaultAlbums()
+  seedBwCandidatesAlbum()
+  seedDefaultTags()
 }
 
 function seedDefaultAlbums() {
@@ -107,10 +122,33 @@ function seedDefaultAlbums() {
     { name: '5 Stars',          rules: [{ field: 'rating',  operator: 'gte',          value: 5         }] },
     { name: 'This Week',        rules: [{ field: 'exif_ts', operator: 'in_last_days', value: 7         }] },
     { name: 'Recently Deleted', rules: [{ field: 'status',  operator: 'eq',           value: 'deleted' }] },
+    { name: 'B&W Candidates',   rules: [{ field: 'tags',    operator: 'contains',     value: 'bw-candidate' }] },
   ]
   for (const d of defaults) {
     ins.run(d.name, 'global', JSON.stringify(d.rules), 'exif_ts', 'asc', now, now)
   }
+}
+
+// Targeted (not bulk) seed so installs that already had smart_albums
+// populated before this album existed still pick it up.
+function seedBwCandidatesAlbum() {
+  const existing = db.prepare("SELECT id FROM smart_albums WHERE name = 'B&W Candidates'").get()
+  if (existing) return
+  const now = Date.now()
+  const rules = [{ field: 'tags', operator: 'contains', value: 'bw-candidate' }]
+  db.prepare(`
+    INSERT INTO smart_albums (name, scope, rules, sort_by, sort_dir, created_at, updated_at)
+    VALUES (?, 'global', ?, 'exif_ts', 'asc', ?, ?)
+  `).run('B&W Candidates', JSON.stringify(rules), now, now)
+}
+
+function seedDefaultTags() {
+  const count = db.prepare('SELECT COUNT(*) AS cnt FROM tag_definitions').get().cnt
+  if (count > 0) return
+  db.prepare(`
+    INSERT INTO tag_definitions (name, label, color, icon, shortcut, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('bw-candidate', 'B&W Candidate', '#888888', '½', 'b', Date.now())
 }
 
 // --- sessions ---
@@ -462,6 +500,115 @@ function fileListBySession(sessionId, filters = {}) {
   }
 }
 
+// --- tags ---
+
+function tagListDefinitions() {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT * FROM tag_definitions ORDER BY name ASC').all()
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagCreateDefinition(name, label, color, icon, shortcut) {
+  try {
+    const db = getDb()
+    const existing = db.prepare('SELECT id FROM tag_definitions WHERE name = ?').get(name)
+    if (existing) return { error: `Tag "${name}" already exists` }
+    const now = Date.now()
+    const info = db.prepare(`
+      INSERT INTO tag_definitions (name, label, color, icon, shortcut, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, label, color, icon || null, shortcut || null, now)
+    return db.prepare('SELECT * FROM tag_definitions WHERE id = ?').get(info.lastInsertRowid)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function _readFileTags(db, fileId) {
+  const row = db.prepare('SELECT tags FROM files WHERE id = ?').get(fileId)
+  if (!row) return null
+  try { return JSON.parse(row.tags || '[]') } catch { return [] }
+}
+
+function _writeFileTags(db, fileId, tags) {
+  db.prepare('UPDATE files SET tags = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(tags), Date.now(), fileId)
+}
+
+function tagAddToFile(fileId, tagName) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    if (tags === null) return { error: 'File not found' }
+    if (!tags.includes(tagName)) tags.push(tagName)
+    _writeFileTags(db, fileId, tags)
+    return { success: true, tags }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagRemoveFromFile(fileId, tagName) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    if (tags === null) return { error: 'File not found' }
+    const next = tags.filter(t => t !== tagName)
+    _writeFileTags(db, fileId, next)
+    return { success: true, tags: next }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagToggleOnFile(fileId, tagName) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    if (tags === null) return { error: 'File not found' }
+    const present = tags.includes(tagName)
+    const next = present ? tags.filter(t => t !== tagName) : [...tags, tagName]
+    _writeFileTags(db, fileId, next)
+    return { success: true, tags: next, added: !present }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagListByTag(tagName, sessionId) {
+  try {
+    const db = getDb()
+    const conditions = ['EXISTS (SELECT 1 FROM json_each(f.tags) WHERE value = ?)']
+    const values = [tagName]
+    if (sessionId != null) {
+      conditions.push('f.session_id = ?')
+      values.push(sessionId)
+    }
+    return db.prepare(`
+      SELECT f.*, g.label AS groupLabel, g.folder_path AS groupFolderPath
+      FROM files f
+      LEFT JOIN event_groups g ON g.id = f.group_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY f.exif_ts ASC
+    `).all(...values)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function tagListByFile(fileId) {
+  try {
+    const db = getDb()
+    const tags = _readFileTags(db, fileId)
+    return tags || []
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 // --- smart albums ---
 
 // Whitelists prevent SQL injection when building dynamic WHERE clauses.
@@ -472,6 +619,12 @@ const ALLOWED_RULE_FIELDS = new Set([
 
 const ALLOWED_SORT_COLS = new Set(['exif_ts', 'filename', 'rating'])
 
+// Fields that store a JSON array (e.g. '["bw-candidate","hero-shot"]') rather
+// than plain text. "contains"/"not_contains" on these fields match a whole
+// array element, not an arbitrary substring — otherwise a search for tag
+// "bw" would false-positive on "bw-candidate".
+const JSON_ARRAY_FIELDS = new Set(['tags', 'published_to'])
+
 // Returns { sql, params } for a rules array (all rules ANDed together).
 function buildWhereClause(rules) {
   const conditions = []
@@ -481,6 +634,7 @@ function buildWhereClause(rules) {
     if (!ALLOWED_RULE_FIELDS.has(rule.field)) continue
 
     const col = rule.field
+    const isJsonArray = JSON_ARRAY_FIELDS.has(col)
 
     switch (rule.operator) {
       case 'eq':           conditions.push(`${col} = ?`);         params.push(rule.value); break
@@ -489,8 +643,19 @@ function buildWhereClause(rules) {
       case 'lt':           conditions.push(`${col} < ?`);         params.push(rule.value); break
       case 'gte':          conditions.push(`${col} >= ?`);        params.push(rule.value); break
       case 'lte':          conditions.push(`${col} <= ?`);        params.push(rule.value); break
-      case 'contains':     conditions.push(`${col} LIKE ?`);      params.push('%' + rule.value + '%'); break
-      case 'not_contains': conditions.push(`${col} NOT LIKE ?`);  params.push('%' + rule.value + '%'); break
+      case 'contains':
+        conditions.push(`${col} LIKE ?`)
+        params.push(isJsonArray ? '%"' + rule.value + '"%' : '%' + rule.value + '%')
+        break
+      case 'not_contains':
+        if (isJsonArray) {
+          conditions.push(`(${col} NOT LIKE ? OR ${col} IS NULL OR ${col} = '[]')`)
+          params.push('%"' + rule.value + '"%')
+        } else {
+          conditions.push(`${col} NOT LIKE ?`)
+          params.push('%' + rule.value + '%')
+        }
+        break
       case 'in_last_days':
         // exif_ts is stored as Unix ms; strftime('%s','now') returns Unix seconds.
         conditions.push(`${col} >= (CAST(strftime('%s','now') AS INTEGER) - ? * 86400) * 1000`)
@@ -704,6 +869,13 @@ module.exports = {
   fileListBySession,
   fileGetByPath,
   fileSetRating,
+  tagListDefinitions,
+  tagCreateDefinition,
+  tagAddToFile,
+  tagRemoveFromFile,
+  tagToggleOnFile,
+  tagListByTag,
+  tagListByFile,
   albumCreate,
   albumList,
   albumGet,

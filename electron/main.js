@@ -26,6 +26,7 @@ ipcMain.handle('fs:moveToTrash', (_, filePath, trashFolderPath) => fileSystem.mo
 ipcMain.handle('fs:restoreFromTrash', (_, trashedPath, originalPath) => fileSystem.restoreFromTrash(trashedPath, originalPath))
 ipcMain.handle('fs:emptyTrash', (_, trashFolderPath) => fileSystem.emptyTrash(trashFolderPath))
 ipcMain.handle('fs:createDirectory', (_, dirPath) => fileSystem.createDirectory(dirPath))
+ipcMain.handle('fs:fileExists', (_, filePath) => fileSystem.fileExists(filePath))
 
 ipcMain.handle('img:thumbnail', (_, filePath, size) => imageProcessor.thumbnail(filePath, size))
 ipcMain.handle('img:rotate', (_, filePath, degrees, outputPath) => imageProcessor.rotate(filePath, degrees, outputPath))
@@ -38,6 +39,7 @@ ipcMain.handle('img:getMetadataBatch', (_, filePaths) => imageProcessor.getMetad
 ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
 ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
 ipcMain.handle('tools:openFolder', (_, toolPath, folderPath) => toolLauncher.openFolder(toolPath, folderPath))
+ipcMain.handle('tools:openFiles', (_, toolPath, filePaths, styleName) => toolLauncher.openFiles(toolPath, filePaths, styleName))
 ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolder, presetPath) =>
   toolLauncher.runBatchExport(toolPath, inputPaths, outputFolder, presetPath, event.sender))
 ipcMain.handle('tools:revealInFinder', (_, filePath) => {
@@ -144,6 +146,15 @@ ipcMain.handle('dialog:openPreset', async () => {
   return result.filePaths[0]
 })
 
+ipcMain.handle('dialog:openDarktableStyle', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Darktable Styles', extensions: ['dtstyle'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
 ipcMain.handle('shell:openExternal', (_, extUrl) => {
   shell.openExternal(extUrl)
   return { success: true }
@@ -189,6 +200,15 @@ ipcMain.handle('file:listBySession', (_, sessionId, filters) =>
   sessionStore.fileListBySession(sessionId, filters))
 ipcMain.handle('file:getByPath', (_, filePath) => sessionStore.fileGetByPath(filePath))
 ipcMain.handle('file:setRating', (_, fileId, rating) => sessionStore.fileSetRating(fileId, rating))
+
+ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())
+ipcMain.handle('tag:createDefinition', (_, name, label, color, icon, shortcut) =>
+  sessionStore.tagCreateDefinition(name, label, color, icon, shortcut))
+ipcMain.handle('tag:addToFile', (_, fileId, tagName) => sessionStore.tagAddToFile(fileId, tagName))
+ipcMain.handle('tag:removeFromFile', (_, fileId, tagName) => sessionStore.tagRemoveFromFile(fileId, tagName))
+ipcMain.handle('tag:toggleOnFile', (_, fileId, tagName) => sessionStore.tagToggleOnFile(fileId, tagName))
+ipcMain.handle('tag:listByTag', (_, tagName, sessionId) => sessionStore.tagListByTag(tagName, sessionId))
+ipcMain.handle('tag:listByFile', (_, fileId) => sessionStore.tagListByFile(fileId))
 
 ipcMain.handle('album:create', (_, name, rules, scope, sessionId, sortBy, sortDir) =>
   sessionStore.albumCreate(name, rules, scope, sessionId, sortBy, sortDir))

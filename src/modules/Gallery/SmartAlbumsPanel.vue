@@ -16,6 +16,10 @@
         @click="selectAlbum(album)"
         @contextmenu.prevent="openCtxMenu($event, album)"
       >
+        <svg v-if="album.name === 'B&W Candidates'" class="album-row-icon" viewBox="0 0 16 16" width="12" height="12" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+          <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+        </svg>
         <span class="album-row-name">{{ album.name }}</span>
         <span class="album-row-count">{{ album.fileCount }}</span>
       </div>
@@ -57,6 +61,20 @@
       >
         <span class="album-row-name group-name">{{ group.label }}</span>
         <span class="album-row-count">{{ group.file_count || '' }}</span>
+      </div>
+
+      <div
+        v-if="sessionBwCount > 0"
+        class="album-row"
+        :class="{ active: isSourceActive({ type: 'session-tag', sessionId: activeSession.id, tagName: 'bw-candidate' }) }"
+        @click="$emit('select', { type: 'session-tag', sessionId: activeSession.id, tagName: 'bw-candidate' }, 'B&W Candidates — ' + activeSession.name)"
+      >
+        <svg class="album-row-icon" viewBox="0 0 16 16" width="12" height="12" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+          <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+        </svg>
+        <span class="album-row-name" :title="'B&W Candidates — ' + activeSession.name">B&amp;W Candidates — {{ activeSession.name }}</span>
+        <span class="album-row-count">{{ sessionBwCount }}</span>
       </div>
     </div>
 
@@ -104,6 +122,7 @@ export default {
       SESSION_FILTERS,
       globalAlbums: [],
       sessionGroups: [],
+      sessionBwCount: 0,
       editorVisible: false,
       editingAlbum: null,
       ctxMenu: null
@@ -116,8 +135,11 @@ export default {
         if (session) {
           const groups = await window.api.invoke('group:list', session.id)
           this.sessionGroups = Array.isArray(groups) ? groups : []
+          const bwFiles = await window.api.invoke('tag:listByTag', 'bw-candidate', session.id)
+          this.sessionBwCount = Array.isArray(bwFiles) ? bwFiles.length : 0
         } else {
           this.sessionGroups = []
+          this.sessionBwCount = 0
         }
       }
     }
@@ -142,6 +164,7 @@ export default {
         case 'session-all':    return s.sessionId === source.sessionId
         case 'session-status': return s.sessionId === source.sessionId && s.status === source.status
         case 'session-group':  return s.groupId === source.groupId
+        case 'session-tag':    return s.sessionId === source.sessionId && s.tagName === source.tagName
         default: return false
       }
     },
@@ -248,6 +271,12 @@ export default {
   border-left-color: var(--accent);
   background: rgba(201, 168, 76, 0.08);
   padding-left: 9px;
+}
+
+.album-row-icon {
+  flex-shrink: 0;
+  color: var(--text2);
+  opacity: 0.7;
 }
 
 .album-row-name {
