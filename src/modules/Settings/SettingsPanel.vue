@@ -136,6 +136,13 @@
             <h4>About</h4>
             <div class="about-title">Frame — Photo Workflow Studio</div>
             <div class="about-version">Version {{ appVersion }}</div>
+            <div class="about-credits">Created by Michael Uftring</div>
+            <div class="about-credits">
+              <a @click="openUrl('https://github.com/muftring/frame')">View on GitHub</a>
+            </div>
+            <div class="about-credits">
+              <a @click="openUrl('https://github.com/muftring/frame/blob/master/LICENSE')">MIT License</a>
+            </div>
             <div class="about-credits">
               Built with
               <a @click="openUrl('https://www.darktable.org')">Darktable</a>,
