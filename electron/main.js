@@ -20,6 +20,7 @@ ipcMain.handle('fs:moveToTrash', (_, filePath, trashFolderPath) => fileSystem.mo
 ipcMain.handle('fs:restoreFromTrash', (_, trashedPath, originalPath) => fileSystem.restoreFromTrash(trashedPath, originalPath))
 ipcMain.handle('fs:emptyTrash', (_, trashFolderPath) => fileSystem.emptyTrash(trashFolderPath))
 ipcMain.handle('fs:createDirectory', (_, dirPath) => fileSystem.createDirectory(dirPath))
+ipcMain.handle('fs:fileExists', (_, filePath) => fileSystem.fileExists(filePath))
 
 ipcMain.handle('img:thumbnail', (_, filePath, size) => imageProcessor.thumbnail(filePath, size))
 ipcMain.handle('img:rotate', (_, filePath, degrees, outputPath) => imageProcessor.rotate(filePath, degrees, outputPath))
@@ -32,6 +33,7 @@ ipcMain.handle('img:getMetadataBatch', (_, filePaths) => imageProcessor.getMetad
 ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
 ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
 ipcMain.handle('tools:openFolder', (_, toolPath, folderPath) => toolLauncher.openFolder(toolPath, folderPath))
+ipcMain.handle('tools:openFiles', (_, toolPath, filePaths, styleName) => toolLauncher.openFiles(toolPath, filePaths, styleName))
 ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolder, presetPath) =>
   toolLauncher.runBatchExport(toolPath, inputPaths, outputFolder, presetPath, event.sender))
 ipcMain.handle('tools:revealInFinder', (_, filePath) => {
@@ -133,6 +135,15 @@ ipcMain.handle('dialog:openPreset', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [{ name: 'RawTherapee Presets', extensions: ['pp3'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('dialog:openDarktableStyle', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Darktable Styles', extensions: ['dtstyle'] }]
   })
   if (result.canceled) return null
   return result.filePaths[0]

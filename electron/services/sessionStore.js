@@ -581,15 +581,19 @@ function tagToggleOnFile(fileId, tagName) {
 function tagListByTag(tagName, sessionId) {
   try {
     const db = getDb()
-    const conditions = ['EXISTS (SELECT 1 FROM json_each(tags) WHERE value = ?)']
+    const conditions = ['EXISTS (SELECT 1 FROM json_each(f.tags) WHERE value = ?)']
     const values = [tagName]
     if (sessionId != null) {
-      conditions.push('session_id = ?')
+      conditions.push('f.session_id = ?')
       values.push(sessionId)
     }
-    return db.prepare(
-      `SELECT * FROM files WHERE ${conditions.join(' AND ')} ORDER BY exif_ts ASC`
-    ).all(...values)
+    return db.prepare(`
+      SELECT f.*, g.label AS groupLabel, g.folder_path AS groupFolderPath
+      FROM files f
+      LEFT JOIN event_groups g ON g.id = f.group_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY f.exif_ts ASC
+    `).all(...values)
   } catch (err) {
     return { error: err.message }
   }

@@ -78,6 +78,32 @@ function openFolder(toolPath, folderPath) {
   }
 }
 
+// Launches the tool with multiple files as separate arguments (e.g. opening
+// several B&W candidates in Darktable's lighttable at once).
+//
+// styleName, if given, is appended as `--style <name>`. This is speculative:
+// `--style` is documented for darktable-cli (the batch/headless exporter),
+// not the interactive GUI binary launched here, so it may be silently
+// ignored depending on the installed Darktable version. If the style isn't
+// applied automatically, select the imported images in Darktable's
+// lighttable and apply the style manually from the history stack / style
+// manager.
+function openFiles(toolPath, filePaths, styleName) {
+  try {
+    const args = [...filePaths]
+    if (styleName) args.push('--style', styleName)
+
+    const child = spawn(toolPath, args, {
+      detached: true,
+      stdio: 'ignore'
+    })
+    child.unref()
+    return { success: true, pid: child.pid }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+}
+
 function runBatchExport(toolPath, inputPaths, outputFolder, presetPath, sender) {
   return new Promise((resolve) => {
     try {
@@ -119,5 +145,6 @@ module.exports = {
   findInstalled,
   openFile,
   openFolder,
+  openFiles,
   runBatchExport
 }
