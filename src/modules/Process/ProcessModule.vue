@@ -363,7 +363,7 @@
             <div>
               <div class="launch-mode-title">Quick stitch (automatic CLI)</div>
               <div class="setting-helper">Frame attempts automatic stitching. Works best with level horizon and consistent exposure.</div>
-              <div v-if="!quickStitchAvailable" class="setting-helper quick-stitch-disabled-reason">Requires nona and enblend (bundled with Hugin installation)</div>
+              <div v-if="!quickStitchAvailable" class="setting-helper quick-stitch-disabled-reason">Requires nona, enblend, and cpfind (bundled with Hugin installation)</div>
             </div>
           </label>
         </div>
@@ -415,6 +415,7 @@
 <script>
 const STITCH_STEPS = [
   { id: 'pto', label: 'Generate .pto' },
+  { id: 'findpoints', label: 'Find control points' },
   { id: 'optimise', label: 'Optimise' },
   { id: 'remap', label: 'Remap' },
   { id: 'blend', label: 'Blend' },
@@ -428,7 +429,7 @@ export default {
   emits: ['navigate'],
   data() {
     return {
-      tools: { darktable: null, rawtherapee: null, hugin: null, huginCli: { nona: null, enblend: null, autooptimiser: null } },
+      tools: { darktable: null, rawtherapee: null, hugin: null, huginCli: { nona: null, enblend: null, autooptimiser: null, cpfind: null } },
       openTarget: null,
       openTargetType: null,
       batchSource: null,
@@ -497,7 +498,7 @@ export default {
       return this.confirmedPanoSets.find(s => s.id === this.selectedPanoSetId) || null
     },
     quickStitchAvailable() {
-      return !!(this.tools.huginCli?.nona && this.tools.huginCli?.enblend && this.tools.huginCli?.autooptimiser)
+      return !!(this.tools.huginCli?.nona && this.tools.huginCli?.enblend && this.tools.huginCli?.autooptimiser && this.tools.huginCli?.cpfind)
     },
     canLaunch() {
       if (!this.panoSetFiles.length) return false
@@ -795,6 +796,7 @@ export default {
         nonaPath: this.tools.huginCli.nona,
         enblendPath: this.tools.huginCli.enblend,
         autooptimiserPath: this.tools.huginCli.autooptimiser,
+        cpfindPath: this.tools.huginCli.cpfind,
         inputFiles: this.panoSetFiles.map(f => f.full_path),
         outputPath,
         projection: this.projection,

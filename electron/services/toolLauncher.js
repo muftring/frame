@@ -70,10 +70,14 @@ async function findHuginCli(huginPath) {
   if (huginPath) searchDirs.unshift(path.dirname(huginPath))
   if (platform === 'darwin' && huginPath) {
     searchDirs.push(path.join(path.dirname(huginPath), '..', 'Resources', 'bin'))
+    // Hugin's official Mac installer places Hugin.app, PTBatcherGUI.app, etc.
+    // inside an "Hugin" folder alongside a tools_mac/ dir of symlinks back
+    // into those bundles — nona/enblend live in PTBatcherGUI.app, not Hugin.app.
+    searchDirs.push(path.join(path.dirname(huginPath), '..', '..', '..', 'tools_mac'))
   }
 
   const result = {}
-  for (const name of ['nona', 'enblend', 'autooptimiser']) {
+  for (const name of ['nona', 'enblend', 'autooptimiser', 'cpfind']) {
     const candidates = searchDirs.map(dir => path.join(dir, name + exeSuffix))
     result[name] = await findFirstPath(candidates)
   }
@@ -274,7 +278,7 @@ function cancelQuickStitch() {
 
 async function runQuickStitch(options, sender) {
   const {
-    nonaPath, enblendPath, autooptimiserPath,
+    nonaPath, enblendPath, autooptimiserPath, cpfindPath,
     inputFiles, outputPath,
     projection = 2, quality = 92, outputWidth = null
   } = options
@@ -282,6 +286,7 @@ async function runQuickStitch(options, sender) {
   const outputFolder = path.dirname(outputPath)
   const baseName = path.basename(outputPath, path.extname(outputPath))
   const ptoPath = path.join(outputFolder, `${baseName}_project.pto`)
+  const cpFoundPtoPath = path.join(outputFolder, `${baseName}_cp.pto`)
   const optimisedPtoPath = path.join(outputFolder, `${baseName}_optimised.pto`)
   const framePrefix = path.join(outputFolder, 'frame_')
   const tifFiles = inputFiles.map((_, i) => `${framePrefix}${String(i).padStart(4, '0')}.tif`)
@@ -290,8 +295,18 @@ async function runQuickStitch(options, sender) {
     sender?.send('tools:panoProgress', { step: 'pto', line: `Writing project file: ${ptoPath}` })
     await writePtoFile(inputFiles, ptoPath, { projection, outputWidth })
 
+    // autooptimiser only solves the geometry for control points that already
+    // exist in the .pto — it doesn't detect them. cpfind matches keypoints
+    // between overlapping frames and writes the resulting control points
+    // (`c` lines) into a new .pto, which is what autooptimiser actually optimises.
+    const cpResult = await runStep(
+      cpfindPath, ['-o', cpFoundPtoPath, ptoPath],
+      outputFolder, sender, 'findpoints'
+    )
+    if (!cpResult.success) return { success: false, error: cpResult.error, step: 'findpoints' }
+
     const optResult = await runStep(
-      autooptimiserPath, ['-a', '-m', '-l', '-s', '-o', optimisedPtoPath, ptoPath],
+      autooptimiserPath, ['-a', '-m', '-l', '-s', '-o', optimisedPtoPath, cpFoundPtoPath],
       outputFolder, sender, 'optimise'
     )
     if (!optResult.success) return { success: false, error: optResult.error, step: 'optimise' }
@@ -310,6 +325,7 @@ async function runQuickStitch(options, sender) {
 
     for (const tif of tifFiles) await fs.unlink(tif).catch(() => {})
     await fs.unlink(ptoPath).catch(() => {})
+    await fs.unlink(cpFoundPtoPath).catch(() => {})
     await fs.unlink(optimisedPtoPath).catch(() => {})
 
     return { success: true, outputPath }
