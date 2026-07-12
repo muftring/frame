@@ -38,7 +38,7 @@
           v-for="(img, i) in images"
           :key="img.path"
           class="film-thumb"
-          :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept' }"
+          :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept', 'has-pano': img.panoSetId }"
           @click="currentIndex = i"
         >
           <img v-if="img.thumbnail" :src="img.thumbnail" />
@@ -46,7 +46,7 @@
           <div v-if="img.status === 'trashed'" class="thumb-del-badge">del</div>
           <div class="thumb-tag-badges" v-if="img.tags && img.tags.length">
             <span
-              v-for="tagName in img.tags.slice(0, 2)"
+              v-for="tagName in orderedTags(img.tags)"
               :key="tagName"
               class="thumb-tag-badge"
               :style="{ color: tagColor(tagName) }"
@@ -119,6 +119,14 @@
       <div class="empty-hint">Loading images...</div>
     </div>
 
+    <!-- Pano set info bar -->
+    <div v-if="currentImage && currentImage.panoSetId" class="pano-info-bar">
+      <span class="pano-info-text">
+        ⬡ {{ currentImage.panoSetName || 'Panorama' }}  ·  Frame {{ panoFrameNumber }} of {{ panoFrameTotal }}
+      </span>
+      <a class="pano-view-link" @click="viewPanoSet">View set →</a>
+    </div>
+
     <!-- Action bar -->
     <div class="action-bar" v-if="images.length">
       <button class="btn action-btn" @click="prev" :disabled="currentIndex === 0">Prev</button>
@@ -176,6 +184,9 @@
 </template>
 
 <script>
+const TAG_BADGE_ORDER = ['bw-candidate', 'pano-candidate', 'burst-candidate']
+const TAG_BADGE_ABBREV = { 'bw-candidate': 'B&W', 'pano-candidate': 'PANO', 'burst-candidate': 'BRST' }
+
 export default {
   name: 'SorterModule',
   inject: ['toast', 'session', 'updatePipeline'],
@@ -246,6 +257,13 @@ export default {
         if (def.shortcut) map[def.shortcut.toLowerCase()] = def
       }
       return map
+    },
+    panoFrameNumber() {
+      return (this.currentImage?.panoFrameOrder ?? 0) + 1
+    },
+    panoFrameTotal() {
+      if (!this.currentImage?.panoSetId) return 0
+      return this.images.filter(i => i.panoSetId === this.currentImage.panoSetId).length
     }
   },
   watch: {
@@ -296,7 +314,13 @@ export default {
               trashedAt: f.trashed_at || null,
               groupId: group.id,
               groupLabel: group.label,
-              tags: (() => { try { return JSON.parse(f.tags || '[]') } catch { return [] } })()
+              tags: (() => { try { return JSON.parse(f.tags || '[]') } catch { return [] } })(),
+              panoSetId: f.pano_set_id || null,
+              panoSetName: f.pano_set_name || null,
+              panoFrameOrder: f.pano_frame_order,
+              burstSetId: f.burst_set_id || null,
+              burstSetName: f.burst_set_name || null,
+              burstFrameOrder: f.burst_frame_order
             })
           }
         }
@@ -359,7 +383,13 @@ export default {
         trashedAt: null,
         groupId: null,
         groupLabel: null,
-        tags: []
+        tags: [],
+        panoSetId: null,
+        panoSetName: null,
+        panoFrameOrder: null,
+        burstSetId: null,
+        burstSetName: null,
+        burstFrameOrder: null
       }))
 
       this.loading = false
@@ -506,8 +536,19 @@ export default {
       return this.tagDefinitions.find(d => d.name === tagName)?.color || '#888888'
     },
     tagBadgeText(tagName) {
-      if (tagName === 'bw-candidate') return 'B&W'
+      if (TAG_BADGE_ABBREV[tagName]) return TAG_BADGE_ABBREV[tagName]
       return this.tagDefinitions.find(d => d.name === tagName)?.label || tagName
+    },
+    // Canonical left-to-right badge order (B&W, PANO, BURST); any tag
+    // outside that set (future tags) is appended at the end.
+    orderedTags(tags) {
+      const known = TAG_BADGE_ORDER.filter(t => tags.includes(t))
+      const other = tags.filter(t => !TAG_BADGE_ORDER.includes(t))
+      return [...known, ...other]
+    },
+    viewPanoSet() {
+      if (!this.currentImage?.panoSetId) return
+      this.$emit('navigate', 'gallery', { type: 'pano-set', panoSetId: this.currentImage.panoSetId })
     },
     handleImageError(e) {
       if (this.currentImage && this.currentImage.thumbnail) {
@@ -676,6 +717,12 @@ export default {
   border-left-color: var(--accent);
 }
 
+/* outline (not border) so this doesn't fight the border-left status strip */
+.film-thumb.has-pano {
+  outline: 1.5px solid #4a90d9;
+  outline-offset: -1.5px;
+}
+
 .thumb-placeholder {
   width: 100%;
   height: 68px;
@@ -810,6 +857,29 @@ export default {
   height: 100%;
   background: var(--accent);
   transition: width 0.15s ease;
+}
+
+/* Pano set info bar */
+.pano-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: rgba(74, 144, 217, 0.12);
+  border-top: 1px solid rgba(74, 144, 217, 0.3);
+  color: #4a90d9;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pano-view-link {
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+  color: #4a90d9;
+}
+.pano-view-link:hover {
+  color: #3a7ab8;
 }
 
 /* Action bar */

@@ -543,9 +543,14 @@ function fileUpdatePublished(fileId, destinations) {
 function fileListByGroup(groupId) {
   try {
     const db = getDb()
-    return db.prepare(
-      'SELECT * FROM files WHERE group_id = ? ORDER BY exif_ts ASC, filename ASC'
-    ).all(groupId)
+    return db.prepare(`
+      SELECT f.*, ps.name AS pano_set_name, bs.name AS burst_set_name
+      FROM files f
+      LEFT JOIN pano_sets ps ON ps.id = f.pano_set_id
+      LEFT JOIN burst_sets bs ON bs.id = f.burst_set_id
+      WHERE f.group_id = ?
+      ORDER BY f.exif_ts ASC, f.filename ASC
+    `).all(groupId)
   } catch (err) {
     return { error: err.message }
   }
