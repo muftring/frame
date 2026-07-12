@@ -6,6 +6,7 @@ const imageProcessor = require('./services/imageProcessor')
 const toolLauncher = require('./services/toolLauncher')
 const uploadService = require('./services/uploadService')
 const sessionStore = require('./services/sessionStore')
+const sequenceDetector = require('./services/sequenceDetector')
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/muftring/frame'
@@ -226,6 +227,9 @@ ipcMain.handle('burst:addFile', (_, burstSetId, fileId) => sessionStore.burstAdd
 ipcMain.handle('burst:removeFile', (_, burstSetId, fileId) => sessionStore.burstRemoveFile(burstSetId, fileId))
 ipcMain.handle('burst:reorderFrames', (_, burstSetId, orderedFileIds) => sessionStore.burstReorderFrames(burstSetId, orderedFileIds))
 ipcMain.handle('burst:setKeeper', (_, burstSetId, fileId) => sessionStore.burstSetKeeper(burstSetId, fileId))
+
+ipcMain.handle('sequence:detectGroups', (_, sessionId, options) => sequenceDetector.detectGroups(sessionId, options))
+ipcMain.handle('sequence:getDetectionHistory', (_, sessionId) => sequenceDetector.getDetectionHistory(sessionId))
 
 ipcMain.handle('album:create', (_, name, rules, scope, sessionId, sortBy, sortDir) =>
   sessionStore.albumCreate(name, rules, scope, sessionId, sortBy, sortDir))

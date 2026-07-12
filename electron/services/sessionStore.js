@@ -707,6 +707,34 @@ function tagListByFile(fileId) {
   }
 }
 
+// --- sequence detection runs ---
+
+function sequenceDetectionRunCreate(sessionId, options, panoFound, burstFound, ambiguousFound) {
+  try {
+    const db = getDb()
+    const now = Date.now()
+    const info = db.prepare(`
+      INSERT INTO sequence_detection_runs
+        (session_id, run_at, options, pano_found, burst_found, ambiguous_found, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(sessionId, now, JSON.stringify(options), panoFound || 0, burstFound || 0, ambiguousFound || 0, now)
+    return db.prepare('SELECT * FROM sequence_detection_runs WHERE id = ?').get(info.lastInsertRowid)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function sequenceDetectionRunList(sessionId) {
+  try {
+    const db = getDb()
+    return db.prepare(`
+      SELECT * FROM sequence_detection_runs WHERE session_id = ? ORDER BY run_at DESC LIMIT 10
+    `).all(sessionId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 // --- pano sets ---
 
 function panoConfirmSet(sessionId, fileIds, name) {
@@ -1203,6 +1231,8 @@ module.exports = {
   tagToggleOnFile,
   tagListByTag,
   tagListByFile,
+  sequenceDetectionRunCreate,
+  sequenceDetectionRunList,
   panoConfirmSet,
   panoUpdateSet,
   panoDeleteSet,
