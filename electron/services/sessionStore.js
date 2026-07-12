@@ -88,6 +88,43 @@ function initSchema() {
       shortcut    TEXT,
       created_at  INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS pano_sets (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id      INTEGER REFERENCES sessions(id),
+      name            TEXT,
+      status          TEXT DEFAULT 'pending',
+      frame_count     INTEGER DEFAULT 0,
+      output_path     TEXT,
+      hugin_project   TEXT,
+      notes           TEXT,
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS burst_sets (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id      INTEGER REFERENCES sessions(id),
+      name            TEXT,
+      status          TEXT DEFAULT 'pending',
+      frame_count     INTEGER DEFAULT 0,
+      kept_file_id    INTEGER REFERENCES files(id),
+      composite_path  TEXT,
+      notes           TEXT,
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sequence_detection_runs (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id      INTEGER REFERENCES sessions(id),
+      run_at          INTEGER NOT NULL,
+      options         TEXT NOT NULL,
+      pano_found      INTEGER DEFAULT 0,
+      burst_found     INTEGER DEFAULT 0,
+      ambiguous_found INTEGER DEFAULT 0,
+      created_at      INTEGER NOT NULL
+    );
   `)
   // migrations for columns added after initial release
   try { db.prepare('ALTER TABLE sessions ADD COLUMN summary TEXT').run() } catch { /* already exists */ }
@@ -102,10 +139,24 @@ function initSchema() {
   if (!filesCols.includes('updated_at')) {
     db.prepare('ALTER TABLE files ADD COLUMN updated_at INTEGER').run()
   }
+  if (!filesCols.includes('pano_set_id')) {
+    db.prepare('ALTER TABLE files ADD COLUMN pano_set_id INTEGER DEFAULT NULL').run()
+  }
+  if (!filesCols.includes('pano_frame_order')) {
+    db.prepare('ALTER TABLE files ADD COLUMN pano_frame_order INTEGER DEFAULT NULL').run()
+  }
+  if (!filesCols.includes('burst_set_id')) {
+    db.prepare('ALTER TABLE files ADD COLUMN burst_set_id INTEGER DEFAULT NULL').run()
+  }
+  if (!filesCols.includes('burst_frame_order')) {
+    db.prepare('ALTER TABLE files ADD COLUMN burst_frame_order INTEGER DEFAULT NULL').run()
+  }
 
   seedDefaultAlbums()
   seedBwCandidatesAlbum()
+  seedSequenceAlbums()
   seedDefaultTags()
+  seedSequenceTags()
 }
 
 function seedDefaultAlbums() {
@@ -123,6 +174,8 @@ function seedDefaultAlbums() {
     { name: 'This Week',        rules: [{ field: 'exif_ts', operator: 'in_last_days', value: 7         }] },
     { name: 'Recently Deleted', rules: [{ field: 'status',  operator: 'eq',           value: 'deleted' }] },
     { name: 'B&W Candidates',   rules: [{ field: 'tags',    operator: 'contains',     value: 'bw-candidate' }] },
+    { name: 'Panorama Candidates', rules: [{ field: 'tags', operator: 'contains',     value: 'pano-candidate' }] },
+    { name: 'Burst Candidates',    rules: [{ field: 'tags', operator: 'contains',     value: 'burst-candidate' }] },
   ]
   for (const d of defaults) {
     ins.run(d.name, 'global', JSON.stringify(d.rules), 'exif_ts', 'asc', now, now)
@@ -142,13 +195,58 @@ function seedBwCandidatesAlbum() {
   `).run('B&W Candidates', JSON.stringify(rules), now, now)
 }
 
+// Targeted top-up for the two Phase 11 albums, same reasoning as
+// seedBwCandidatesAlbum: installs that already had smart_albums populated
+// before these albums existed still need them individually inserted.
+function seedSequenceAlbums() {
+  const now = Date.now()
+  const toSeed = [
+    { name: 'Panorama Candidates', tag: 'pano-candidate' },
+    { name: 'Burst Candidates',    tag: 'burst-candidate' },
+  ]
+  const ins = db.prepare(`
+    INSERT INTO smart_albums (name, scope, rules, sort_by, sort_dir, created_at, updated_at)
+    VALUES (?, 'global', ?, 'exif_ts', 'asc', ?, ?)
+  `)
+  for (const { name, tag } of toSeed) {
+    const existing = db.prepare('SELECT id FROM smart_albums WHERE name = ?').get(name)
+    if (existing) continue
+    const rules = [{ field: 'tags', operator: 'contains', value: tag }]
+    ins.run(name, JSON.stringify(rules), now, now)
+  }
+}
+
 function seedDefaultTags() {
   const count = db.prepare('SELECT COUNT(*) AS cnt FROM tag_definitions').get().cnt
   if (count > 0) return
-  db.prepare(`
+  const now = Date.now()
+  const ins = db.prepare(`
     INSERT INTO tag_definitions (name, label, color, icon, shortcut, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run('bw-candidate', 'B&W Candidate', '#888888', '½', 'b', Date.now())
+  `)
+  ins.run('bw-candidate', 'B&W Candidate', '#888888', '½', 'b', now)
+  ins.run('pano-candidate', 'Panorama', '#4a90d9', '⬡', 'n', now)
+  ins.run('burst-candidate', 'Burst', '#e8943a', '⚡', 'u', now)
+}
+
+// Targeted top-up, same reasoning as seedBwCandidatesAlbum: installs that
+// already had tag_definitions populated (just bw-candidate, from Phase 10)
+// still need the two new Phase 11 tags inserted individually.
+function seedSequenceTags() {
+  const now = Date.now()
+  const toSeed = [
+    { name: 'pano-candidate', label: 'Panorama', color: '#4a90d9', icon: '⬡', shortcut: 'n' },
+    { name: 'burst-candidate', label: 'Burst', color: '#e8943a', icon: '⚡', shortcut: 'u' },
+  ]
+  const ins = db.prepare(`
+    INSERT INTO tag_definitions (name, label, color, icon, shortcut, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+  for (const t of toSeed) {
+    const existing = db.prepare('SELECT id FROM tag_definitions WHERE name = ?').get(t.name)
+    if (existing) continue
+    ins.run(t.name, t.label, t.color, t.icon, t.shortcut, now)
+  }
 }
 
 // --- sessions ---
@@ -609,6 +707,235 @@ function tagListByFile(fileId) {
   }
 }
 
+// --- pano sets ---
+
+function panoConfirmSet(sessionId, fileIds, name) {
+  try {
+    const db = getDb()
+    const now = Date.now()
+    const info = db.prepare(`
+      INSERT INTO pano_sets (session_id, name, status, frame_count, created_at, updated_at)
+      VALUES (?, ?, 'pending', ?, ?, ?)
+    `).run(sessionId, name || null, fileIds.length, now, now)
+    const panoSetId = info.lastInsertRowid
+
+    const setFrame = db.prepare('UPDATE files SET pano_set_id = ?, pano_frame_order = ? WHERE id = ?')
+    fileIds.forEach((fileId, i) => setFrame.run(panoSetId, i, fileId))
+
+    return db.prepare('SELECT * FROM pano_sets WHERE id = ?').get(panoSetId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+const ALLOWED_PANO_FIELDS = ['name', 'status', 'output_path', 'hugin_project', 'notes']
+
+function panoUpdateSet(panoSetId, fields) {
+  try {
+    const db = getDb()
+    const sets = []
+    const values = []
+    for (const [key, val] of Object.entries(fields)) {
+      if (!ALLOWED_PANO_FIELDS.includes(key)) continue
+      sets.push(`${key} = ?`)
+      values.push(val)
+    }
+    if (sets.length === 0) return { success: true }
+    sets.push('updated_at = ?')
+    values.push(Date.now(), panoSetId)
+    db.prepare(`UPDATE pano_sets SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function panoDeleteSet(panoSetId) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET pano_set_id = NULL, pano_frame_order = NULL WHERE pano_set_id = ?').run(panoSetId)
+    db.prepare('DELETE FROM pano_sets WHERE id = ?').run(panoSetId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function panoListSets(sessionId) {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT * FROM pano_sets WHERE session_id = ? ORDER BY created_at ASC').all(sessionId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function _refreshPanoFrameCount(db, panoSetId) {
+  const count = db.prepare('SELECT COUNT(*) AS n FROM files WHERE pano_set_id = ?').get(panoSetId).n
+  db.prepare('UPDATE pano_sets SET frame_count = ?, updated_at = ? WHERE id = ?').run(count, Date.now(), panoSetId)
+}
+
+function panoAddFile(panoSetId, fileId) {
+  try {
+    const db = getDb()
+    const maxOrder = db.prepare('SELECT MAX(pano_frame_order) AS m FROM files WHERE pano_set_id = ?').get(panoSetId)?.m
+    const nextOrder = maxOrder == null ? 0 : maxOrder + 1
+    db.prepare('UPDATE files SET pano_set_id = ?, pano_frame_order = ? WHERE id = ?').run(panoSetId, nextOrder, fileId)
+    _refreshPanoFrameCount(db, panoSetId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function panoRemoveFile(panoSetId, fileId) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET pano_set_id = NULL, pano_frame_order = NULL WHERE id = ? AND pano_set_id = ?').run(fileId, panoSetId)
+    _refreshPanoFrameCount(db, panoSetId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function panoReorderFrames(panoSetId, orderedFileIds) {
+  try {
+    const db = getDb()
+    const setOrder = db.prepare('UPDATE files SET pano_frame_order = ? WHERE id = ? AND pano_set_id = ?')
+    orderedFileIds.forEach((fileId, i) => setOrder.run(i, fileId, panoSetId))
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+// --- burst sets ---
+
+function burstConfirmSet(sessionId, fileIds, name) {
+  try {
+    const db = getDb()
+    const now = Date.now()
+    const info = db.prepare(`
+      INSERT INTO burst_sets (session_id, name, status, frame_count, created_at, updated_at)
+      VALUES (?, ?, 'pending', ?, ?, ?)
+    `).run(sessionId, name || null, fileIds.length, now, now)
+    const burstSetId = info.lastInsertRowid
+
+    const setFrame = db.prepare('UPDATE files SET burst_set_id = ?, burst_frame_order = ? WHERE id = ?')
+    fileIds.forEach((fileId, i) => setFrame.run(burstSetId, i, fileId))
+
+    return db.prepare('SELECT * FROM burst_sets WHERE id = ?').get(burstSetId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+const ALLOWED_BURST_FIELDS = ['name', 'status', 'kept_file_id', 'composite_path', 'notes']
+
+function burstUpdateSet(burstSetId, fields) {
+  try {
+    const db = getDb()
+    const sets = []
+    const values = []
+    for (const [key, val] of Object.entries(fields)) {
+      if (!ALLOWED_BURST_FIELDS.includes(key)) continue
+      sets.push(`${key} = ?`)
+      values.push(val)
+    }
+    if (sets.length === 0) return { success: true }
+    sets.push('updated_at = ?')
+    values.push(Date.now(), burstSetId)
+    db.prepare(`UPDATE burst_sets SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function burstDeleteSet(burstSetId) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET burst_set_id = NULL, burst_frame_order = NULL WHERE burst_set_id = ?').run(burstSetId)
+    db.prepare('DELETE FROM burst_sets WHERE id = ?').run(burstSetId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function burstListSets(sessionId) {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT * FROM burst_sets WHERE session_id = ? ORDER BY created_at ASC').all(sessionId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function _refreshBurstFrameCount(db, burstSetId) {
+  const count = db.prepare('SELECT COUNT(*) AS n FROM files WHERE burst_set_id = ?').get(burstSetId).n
+  db.prepare('UPDATE burst_sets SET frame_count = ?, updated_at = ? WHERE id = ?').run(count, Date.now(), burstSetId)
+}
+
+function burstAddFile(burstSetId, fileId) {
+  try {
+    const db = getDb()
+    const maxOrder = db.prepare('SELECT MAX(burst_frame_order) AS m FROM files WHERE burst_set_id = ?').get(burstSetId)?.m
+    const nextOrder = maxOrder == null ? 0 : maxOrder + 1
+    db.prepare('UPDATE files SET burst_set_id = ?, burst_frame_order = ? WHERE id = ?').run(burstSetId, nextOrder, fileId)
+    _refreshBurstFrameCount(db, burstSetId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function burstRemoveFile(burstSetId, fileId) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET burst_set_id = NULL, burst_frame_order = NULL WHERE id = ? AND burst_set_id = ?').run(fileId, burstSetId)
+    _refreshBurstFrameCount(db, burstSetId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function burstReorderFrames(burstSetId, orderedFileIds) {
+  try {
+    const db = getDb()
+    const setOrder = db.prepare('UPDATE files SET burst_frame_order = ? WHERE id = ? AND burst_set_id = ?')
+    orderedFileIds.forEach((fileId, i) => setOrder.run(i, fileId, burstSetId))
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+// Sets the keeper for a burst: the chosen file is marked 'kept', every other
+// member is marked 'deleted' (soft delete — DB status only, matching the
+// existing Option A soft-delete behavior from session-mode Sorter; files
+// stay on disk until an explicit cleanup step), and the set itself is
+// marked 'reviewed'.
+function burstSetKeeper(burstSetId, fileId) {
+  try {
+    const db = getDb()
+    const members = db.prepare('SELECT id FROM files WHERE burst_set_id = ?').all(burstSetId)
+
+    for (const m of members) {
+      fileUpdateStatus(m.id, m.id === fileId ? 'kept' : 'deleted')
+    }
+
+    db.prepare('UPDATE burst_sets SET kept_file_id = ? WHERE id = ?').run(fileId, burstSetId)
+    burstUpdateSet(burstSetId, { status: 'reviewed' })
+
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 // --- smart albums ---
 
 // Whitelists prevent SQL injection when building dynamic WHERE clauses.
@@ -876,6 +1203,21 @@ module.exports = {
   tagToggleOnFile,
   tagListByTag,
   tagListByFile,
+  panoConfirmSet,
+  panoUpdateSet,
+  panoDeleteSet,
+  panoListSets,
+  panoAddFile,
+  panoRemoveFile,
+  panoReorderFrames,
+  burstConfirmSet,
+  burstUpdateSet,
+  burstDeleteSet,
+  burstListSets,
+  burstAddFile,
+  burstRemoveFile,
+  burstReorderFrames,
+  burstSetKeeper,
   albumCreate,
   albumList,
   albumGet,
