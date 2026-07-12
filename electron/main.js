@@ -215,6 +215,7 @@ ipcMain.handle('pano:confirmSet', (_, sessionId, fileIds, name) => sessionStore.
 ipcMain.handle('pano:updateSet', (_, panoSetId, fields) => sessionStore.panoUpdateSet(panoSetId, fields))
 ipcMain.handle('pano:deleteSet', (_, panoSetId) => sessionStore.panoDeleteSet(panoSetId))
 ipcMain.handle('pano:listSets', (_, sessionId) => sessionStore.panoListSets(sessionId))
+ipcMain.handle('pano:listFiles', (_, panoSetId) => sessionStore.panoListFiles(panoSetId))
 ipcMain.handle('pano:addFile', (_, panoSetId, fileId) => sessionStore.panoAddFile(panoSetId, fileId))
 ipcMain.handle('pano:removeFile', (_, panoSetId, fileId) => sessionStore.panoRemoveFile(panoSetId, fileId))
 ipcMain.handle('pano:reorderFrames', (_, panoSetId, orderedFileIds) => sessionStore.panoReorderFrames(panoSetId, orderedFileIds))

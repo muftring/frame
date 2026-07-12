@@ -78,6 +78,74 @@
       </div>
     </div>
 
+    <!-- PANORAMA SETS -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-header">
+        <span class="sidebar-section-label">PANORAMA SETS</span>
+        <div class="header-btn-group">
+          <button
+            class="add-icon-btn"
+            :disabled="!activeSession"
+            :title="activeSession ? 'Detect panorama and burst sequences' : 'Start a session to detect sequences'"
+            @click="detectionModalOpen = true"
+          >⟳</button>
+          <button
+            class="add-icon-btn"
+            :disabled="!activeSession"
+            :title="activeSession ? 'Create panorama set manually' : 'Start a session to create a set'"
+            @click="manualCreateOpen = true"
+          >+</button>
+        </div>
+      </div>
+
+      <div
+        v-if="panoCandidatesAlbum"
+        class="album-row"
+        :class="{ active: isSourceActive({ type: 'album', albumId: panoCandidatesAlbum.id }) }"
+        @click="$emit('select', { type: 'album', albumId: panoCandidatesAlbum.id }, 'All Panorama Candidates')"
+      >
+        <svg class="album-row-icon pano-icon" viewBox="0 0 16 16" width="12" height="12" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+          <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+        </svg>
+        <span class="album-row-name">All Panorama Candidates</span>
+        <span class="album-row-count">{{ panoCandidatesAlbum.fileCount }}</span>
+      </div>
+
+      <div
+        v-if="activeSession && sessionPanoCandidateCount > 0"
+        class="album-row"
+        :class="{ active: isSourceActive({ type: 'session-tag', sessionId: activeSession.id, tagName: 'pano-candidate' }) }"
+        @click="$emit('select', { type: 'session-tag', sessionId: activeSession.id, tagName: 'pano-candidate' }, 'Panoramas — ' + activeSession.name)"
+      >
+        <svg class="album-row-icon pano-icon" viewBox="0 0 16 16" width="12" height="12" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+          <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+        </svg>
+        <span class="album-row-name" :title="'Panoramas — ' + activeSession.name">Panoramas — {{ activeSession.name }}</span>
+        <span class="album-row-count">{{ sessionPanoCandidateCount }}</span>
+      </div>
+
+      <div
+        v-for="set in panoSets"
+        :key="'ps' + set.id"
+        class="album-row pano-set-row"
+        :class="{ active: selectedPanoSetId === set.id }"
+        @click="$emit('select-pano-set', set.id)"
+      >
+        <svg class="album-row-icon pano-icon" viewBox="0 0 16 16" width="12" height="12" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" />
+          <path d="M8 1.5 A6.5 6.5 0 0 0 8 14.5 Z" fill="currentColor" />
+        </svg>
+        <span class="album-row-name" :title="set.name">{{ set.name }}</span>
+        <span class="pano-set-count">{{ set.frame_count }}</span>
+        <span class="status-pill" :class="'status-' + set.status">{{ statusLabel(set.status) }}</span>
+      </div>
+
+      <div v-if="activeSession && !panoSets.length" class="sidebar-empty">No panorama sets yet</div>
+      <div v-if="!activeSession" class="sidebar-empty">Start a session to create panorama sets</div>
+    </div>
+
     <!-- Footer -->
     <div class="sidebar-footer">
       <button class="new-album-btn" @click="openEditor(null)">+ New Smart Album</button>
@@ -97,11 +165,29 @@
       @saved="onAlbumSaved"
       @cancel="editorVisible = false"
     />
+
+    <!-- Sequence detection modal -->
+    <SequenceDetectionModal
+      v-if="detectionModalOpen"
+      :active-session="activeSession"
+      @close="detectionModalOpen = false"
+      @confirmed="handleSequencesConfirmed"
+    />
+
+    <!-- Manual pano set creation modal -->
+    <ManualPanoSetModal
+      v-if="manualCreateOpen"
+      :active-session="activeSession"
+      @close="manualCreateOpen = false"
+      @created="handlePanoSetCreated"
+    />
   </div>
 </template>
 
 <script>
 import SmartAlbumEditor from './SmartAlbumEditor.vue'
+import SequenceDetectionModal from './SequenceDetectionModal.vue'
+import ManualPanoSetModal from './ManualPanoSetModal.vue'
 
 const SESSION_FILTERS = [
   { status: 'kept',       label: 'Kept' },
@@ -111,21 +197,31 @@ const SESSION_FILTERS = [
 
 export default {
   name: 'SmartAlbumsPanel',
-  components: { SmartAlbumEditor },
+  components: { SmartAlbumEditor, SequenceDetectionModal, ManualPanoSetModal },
   props: {
-    activeSession:  { type: Object, default: null },
-    selectedSource: { type: Object, default: null }
+    activeSession:     { type: Object, default: null },
+    selectedSource:    { type: Object, default: null },
+    selectedPanoSetId: { type: Number, default: null }
   },
-  emits: ['select'],
+  emits: ['select', 'select-pano-set', 'sequences-confirmed'],
   data() {
     return {
       SESSION_FILTERS,
       globalAlbums: [],
       sessionGroups: [],
       sessionBwCount: 0,
+      sessionPanoCandidateCount: 0,
+      panoSets: [],
       editorVisible: false,
       editingAlbum: null,
-      ctxMenu: null
+      ctxMenu: null,
+      detectionModalOpen: false,
+      manualCreateOpen: false
+    }
+  },
+  computed: {
+    panoCandidatesAlbum() {
+      return this.globalAlbums.find(a => a.name === 'Panorama Candidates') || null
     }
   },
   watch: {
@@ -137,9 +233,14 @@ export default {
           this.sessionGroups = Array.isArray(groups) ? groups : []
           const bwFiles = await window.api.invoke('tag:listByTag', 'bw-candidate', session.id)
           this.sessionBwCount = Array.isArray(bwFiles) ? bwFiles.length : 0
+          const panoFiles = await window.api.invoke('tag:listByTag', 'pano-candidate', session.id)
+          this.sessionPanoCandidateCount = Array.isArray(panoFiles) ? panoFiles.length : 0
+          await this.loadPanoSets()
         } else {
           this.sessionGroups = []
           this.sessionBwCount = 0
+          this.sessionPanoCandidateCount = 0
+          this.panoSets = []
         }
       }
     }
@@ -151,6 +252,28 @@ export default {
     async loadAlbums() {
       const albums = await window.api.invoke('album:list', 'global')
       this.globalAlbums = Array.isArray(albums) ? albums : []
+    },
+    async loadPanoSets() {
+      if (!this.activeSession) { this.panoSets = []; return }
+      const sets = await window.api.invoke('pano:listSets', this.activeSession.id)
+      this.panoSets = Array.isArray(sets) ? sets : []
+    },
+    statusLabel(status) {
+      return { pending: 'Pending', confirmed: 'Confirmed', stitched: 'Stitched', archived: 'Archived' }[status] || status
+    },
+    async handleSequencesConfirmed(payload) {
+      this.detectionModalOpen = false
+      await this.loadPanoSets()
+      if (this.activeSession) {
+        const panoFiles = await window.api.invoke('tag:listByTag', 'pano-candidate', this.activeSession.id)
+        this.sessionPanoCandidateCount = Array.isArray(panoFiles) ? panoFiles.length : 0
+      }
+      await this.loadAlbums()
+      this.$emit('sequences-confirmed', payload)
+    },
+    async handlePanoSetCreated() {
+      this.manualCreateOpen = false
+      await this.loadPanoSets()
     },
     selectAlbum(album) {
       this.$emit('select', { type: 'album', albumId: album.id }, album.name)
@@ -253,6 +376,15 @@ export default {
   opacity: 1;
   background: var(--surface2);
 }
+.add-icon-btn:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.header-btn-group {
+  display: flex;
+  gap: 2px;
+}
 
 .album-row {
   display: flex;
@@ -278,6 +410,36 @@ export default {
   color: var(--text2);
   opacity: 0.7;
 }
+
+.pano-icon {
+  color: #4a90d9;
+  opacity: 1;
+}
+
+.pano-set-row {
+  gap: 6px;
+}
+
+.pano-set-count {
+  font-size: 10px;
+  color: var(--text2);
+  opacity: 0.5;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-pill {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.status-pending   { background: var(--surface2); color: var(--text2); }
+.status-confirmed { background: rgba(74, 144, 217, 0.15); color: #4a90d9; }
+.status-stitched  { background: rgba(102, 187, 106, 0.15); color: #66bb6a; }
+.status-archived  { background: var(--surface2); color: var(--text2); opacity: 0.6; }
 
 .album-row-name {
   flex: 1;

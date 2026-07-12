@@ -803,6 +803,20 @@ function panoListSets(sessionId) {
   }
 }
 
+// Member files for a pano set, in frame order — needed by the Gallery pano
+// set detail view (frame strip, reorder, add/remove) but not covered by
+// panoListSets, which only returns set-level metadata.
+function panoListFiles(panoSetId) {
+  try {
+    const db = getDb()
+    return db.prepare(
+      'SELECT * FROM files WHERE pano_set_id = ? ORDER BY pano_frame_order ASC'
+    ).all(panoSetId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function _refreshPanoFrameCount(db, panoSetId) {
   const count = db.prepare('SELECT COUNT(*) AS n FROM files WHERE pano_set_id = ?').get(panoSetId).n
   db.prepare('UPDATE pano_sets SET frame_count = ?, updated_at = ? WHERE id = ?').run(count, Date.now(), panoSetId)
@@ -1242,6 +1256,7 @@ module.exports = {
   panoUpdateSet,
   panoDeleteSet,
   panoListSets,
+  panoListFiles,
   panoAddFile,
   panoRemoveFile,
   panoReorderFrames,
