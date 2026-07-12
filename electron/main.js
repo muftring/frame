@@ -43,6 +43,9 @@ ipcMain.handle('tools:openFolder', (_, toolPath, folderPath) => toolLauncher.ope
 ipcMain.handle('tools:openFiles', (_, toolPath, filePaths, styleName) => toolLauncher.openFiles(toolPath, filePaths, styleName))
 ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolder, presetPath) =>
   toolLauncher.runBatchExport(toolPath, inputPaths, outputFolder, presetPath, event.sender))
+ipcMain.handle('tools:openHugin', (_, huginPath, filePaths) => toolLauncher.openHugin(huginPath, filePaths))
+ipcMain.handle('tools:runQuickStitch', (event, options) => toolLauncher.runQuickStitch(options, event.sender))
+ipcMain.handle('tools:cancelQuickStitch', () => toolLauncher.cancelQuickStitch())
 ipcMain.handle('tools:revealInFinder', (_, filePath) => {
   shell.showItemInFolder(filePath)
   return { success: true }

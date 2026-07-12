@@ -250,6 +250,11 @@ export default {
 
       this.loading = false
       this.$nextTick(() => this.setupObserver())
+
+      if (source.focusFileId != null) {
+        const idx = this.images.findIndex(img => img.fileId === source.focusFileId)
+        if (idx !== -1) this.openViewer(idx)
+      }
     },
 
     async openFolder() {
