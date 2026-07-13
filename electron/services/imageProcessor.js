@@ -300,7 +300,10 @@ function parseFullExif(exifBuf) {
     lens: null, focalLength: null, focalLength35mm: null,
     aperture: null, shutterSpeed: null, iso: null,
     exposureMode: null, meteringMode: null, whiteBalance: null,
-    flash: null, exposureComp: null, gps: null
+    flash: null, exposureComp: null, gps: null,
+    // Raw (unformatted) values alongside the display strings above, for
+    // consumers that need to do arithmetic (e.g. sequenceDetector.js).
+    focalLengthMm: null, shutterSpeedRational: null
   }
 
   try {
@@ -336,7 +339,11 @@ function parseFullExif(exifBuf) {
     }
 
     // ExposureTime (0x829A) → shutter speed
-    if (exifIFD[0x829A]) result.shutterSpeed = fmtShutter(ifdRational(buf, base, exifIFD[0x829A], le))
+    if (exifIFD[0x829A]) {
+      const shutterR = ifdRational(buf, base, exifIFD[0x829A], le)
+      result.shutterSpeed = fmtShutter(shutterR)
+      if (shutterR) result.shutterSpeedRational = [shutterR.num, shutterR.den]
+    }
 
     // FNumber (0x829D) → aperture
     if (exifIFD[0x829D]) result.aperture = fmtAperture(ifdRational(buf, base, exifIFD[0x829D], le))
@@ -359,7 +366,10 @@ function parseFullExif(exifBuf) {
     // FocalLength (0x920A) → "200mm"
     if (exifIFD[0x920A]) {
       const r = ifdRational(buf, base, exifIFD[0x920A], le)
-      if (r) result.focalLength = Math.round(r.num / r.den) + 'mm'
+      if (r) {
+        result.focalLengthMm = Math.round(r.num / r.den)
+        result.focalLength = result.focalLengthMm + 'mm'
+      }
     }
 
     // FocalLengthIn35mmFilm (0xA405) → "300mm"
@@ -425,6 +435,12 @@ async function getFullMetadata(filePath) {
 
 // ─── Public: batch basic metadata for gallery tooltips ───────────────────────
 
+// shutterSpeed here is the raw [numerator, denominator] rational (e.g.
+// [1, 500] for 1/500s), and focalLength is a raw mm number — not the
+// formatted display strings getFullMetadata/parseFullExif otherwise
+// produce — because sequenceDetector.js needs to do arithmetic on them.
+// driveMode is maker-note territory (not standard EXIF) and this parser
+// doesn't read maker notes, so it's always null for now.
 async function getMetadataBatch(filePaths) {
   return Promise.all(filePaths.map(async (fp) => {
     try {
@@ -433,13 +449,15 @@ async function getMetadataBatch(filePaths) {
       let iso = null
       let aperture = null
       let shutterSpeed = null
+      let focalLength = null
 
       if (meta.exif) {
         const parsed = parseFullExif(meta.exif)
         dateTimeOriginal = parsed.dateTimeOriginal
         iso              = parsed.iso
         aperture         = parsed.aperture
-        shutterSpeed     = parsed.shutterSpeed
+        shutterSpeed     = parsed.shutterSpeedRational
+        focalLength      = parsed.focalLengthMm
       }
 
       return {
@@ -449,13 +467,36 @@ async function getMetadataBatch(filePaths) {
         dateTimeOriginal,
         iso,
         aperture,
-        shutterSpeed
+        shutterSpeed,
+        focalLength,
+        driveMode: null
       }
     } catch {
       return { filename: path.basename(fp), width: null, height: null,
-               dateTimeOriginal: null, iso: null, aperture: null, shutterSpeed: null }
+               dateTimeOriginal: null, iso: null, aperture: null, shutterSpeed: null,
+               focalLength: null, driveMode: null }
     }
   }))
+}
+
+// 256-bin normalized luminance histogram — used by sequenceDetector.js's
+// optional (expensive, opt-in) histogram-similarity comparison. Downscaled
+// to 64x64 before binning since only the overall tonal distribution matters,
+// not per-pixel detail.
+async function getLuminanceHistogram(filePath) {
+  try {
+    const buf = await sharp(await sharpSource(filePath))
+      .resize(64, 64, { fit: 'fill' })
+      .grayscale()
+      .raw()
+      .toBuffer()
+    const bins = new Array(256).fill(0)
+    for (const v of buf) bins[v]++
+    const total = buf.length
+    return bins.map(b => b / total)
+  } catch {
+    return null
+  }
 }
 
 module.exports = {
@@ -466,5 +507,6 @@ module.exports = {
   flip,
   getMetadata,
   getFullMetadata,
-  getMetadataBatch
+  getMetadataBatch,
+  getLuminanceHistogram
 }

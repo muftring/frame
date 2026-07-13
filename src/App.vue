@@ -92,9 +92,9 @@
         />
         <TriageModule v-else-if="currentModule === 'triage'" @navigate="handleNavigate" />
         <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
-        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" />
+        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" @navigate="handleNavigate" />
         <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
-        <ProcessModule v-else-if="currentModule === 'process'" />
+        <ProcessModule v-else-if="currentModule === 'process'" @navigate="handleNavigate" />
         <PublishModule v-else-if="currentModule === 'publish'" />
       </div>
     </main>
@@ -192,7 +192,9 @@ export default {
         theme: 'dark',
         archivaultCliPath: null,
         archivaultTag: '',
-        archivaultUploadedBy: ''
+        archivaultUploadedBy: '',
+        ffmpegPath: null,
+        huginPath: null
       },
       navItems: [
         { id: 'home',    label: 'Home',    icon: 'home' },

@@ -224,16 +224,510 @@
         </div>
       </div>
     </section>
+
+    <!-- Section 5: Panorama Stitching -->
+    <section class="section">
+      <h3 class="collapsible" @click="panoSectionOpen = !panoSectionOpen">
+        Panorama Stitching
+        <span class="collapse-icon">{{ panoSectionOpen ? '▾' : '▸' }}</span>
+      </h3>
+
+      <div class="tip-card">
+        <span class="tip-card-icon">💡</span>
+        <div class="tip-card-text">
+          <strong>D80 panorama tip:</strong> Shoot in Manual mode with fixed ISO and shutter speed — exposure
+          differences between frames cause visible seams. Lock white balance to Direct Sunlight. Use 30-40%
+          overlap. At 80mm on the D80 crop sensor, expect 4-6 frames for a 180° panorama.
+        </div>
+      </div>
+
+      <div v-if="panoSectionOpen" class="section-body">
+
+        <!-- Hugin status -->
+        <div class="tool-card pano-tool-card">
+          <div class="tool-header">
+            <h4>Hugin</h4>
+            <span v-if="tools.hugin" class="badge installed">Installed</span>
+            <span v-else class="badge missing">Not Found</span>
+          </div>
+          <div v-if="tools.hugin" class="tool-path">{{ tools.hugin }}</div>
+          <div v-else class="tool-missing">
+            <span class="expected">Expected: /Applications/Hugin/Hugin.app</span>
+            <a class="install-link" @click="openUrl('https://hugin.sourceforge.io')">Download Hugin</a>
+            <span class="brew-note">macOS: brew install hugin</span>
+          </div>
+        </div>
+
+        <!-- Pano set selector -->
+        <template v-if="session.pendingPanoSetId && !changingSet">
+          <div class="picker-row">
+            <label class="row-label">Set:</label>
+            <span class="path-display">{{ selectedPanoSet?.name || 'Panorama set' }} — {{ panoSetFiles.length }} frames</span>
+            <button class="btn" @click="changingSet = true">Change</button>
+          </div>
+        </template>
+        <template v-else-if="session.id">
+          <div class="picker-row">
+            <label class="row-label">Set:</label>
+            <select v-model.number="selectedPanoSetId" class="setting-select" @change="selectPanoSet(selectedPanoSetId)">
+              <option :value="null" disabled>Select a confirmed panorama set…</option>
+              <option v-for="s in confirmedPanoSets" :key="s.id" :value="s.id">{{ s.name }} ({{ s.frame_count }} frames)</option>
+            </select>
+          </div>
+          <div v-if="!confirmedPanoSets.length" class="preset-note">
+            No confirmed panorama sets in this session yet. Confirm a set in Gallery first.
+          </div>
+        </template>
+        <template v-else>
+          <div class="picker-row">
+            <button class="btn" @click="pickFolderDirect">Select Folder</button>
+            <span v-if="folderFiles.length" class="path-display">{{ folderFiles.length }} images</span>
+          </div>
+        </template>
+
+        <!-- Selected set preview -->
+        <div v-if="panoSetFiles.length" class="pano-preview">
+          <div class="pano-thumb-strip">
+            <div v-for="(f, i) in panoSetFiles" :key="f.id || f.full_path" class="pano-preview-thumb">
+              <img v-if="panoThumbnails[f.id || f.full_path]" :src="panoThumbnails[f.id || f.full_path]" />
+              <div v-else class="pano-preview-thumb-placeholder"></div>
+              <span class="frame-number">{{ i + 1 }}</span>
+            </div>
+          </div>
+          <div class="pano-preview-meta">{{ panoSetFiles.length }} frames  ·  {{ panoTimeSpanText }}</div>
+          <div class="pano-preview-meta">Output: <span class="output-filename">{{ outputFilename }}</span></div>
+        </div>
+
+        <!-- Output folder -->
+        <div class="picker-row">
+          <label class="row-label">Output:</label>
+          <button class="btn" @click="pickOutputFolder">Select Folder</button>
+          <span v-if="outputFolder" class="path-display">{{ outputFolder }}</span>
+        </div>
+
+        <!-- Advanced options -->
+        <div class="settings-section">
+          <h4 class="settings-heading collapsible" @click="advancedPanoOpen = !advancedPanoOpen">
+            Advanced options
+            <span class="collapse-icon">{{ advancedPanoOpen ? '▾' : '▸' }}</span>
+          </h4>
+          <template v-if="advancedPanoOpen">
+            <div class="radio-group-vertical">
+              <label class="radio-option">
+                <input type="radio" :value="0" v-model.number="projection" />
+                <span>Rectilinear <span class="setting-helper">Best for small angle panoramas (&lt;120°)</span></span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" :value="2" v-model.number="projection" />
+                <span>Cylindrical <span class="setting-helper">Best for wide landscape panoramas</span></span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" :value="4" v-model.number="projection" />
+                <span>Equirectangular <span class="setting-helper">Best for 360° panoramas</span></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">Output quality</label>
+              <input type="range" min="70" max="100" step="1" v-model.number="quality" class="slider" />
+              <span class="setting-value">JPEG quality: {{ quality }}</span>
+            </div>
+
+            <div class="setting-row toggle-row">
+              <label class="setting-label">Output size</label>
+              <div class="dir-toggle">
+                <button class="dir-btn" :class="{ active: outputSizeMode === 'auto' }" @click="outputSizeMode = 'auto'">Auto</button>
+                <button class="dir-btn" :class="{ active: outputSizeMode === 'custom' }" @click="outputSizeMode = 'custom'">Custom</button>
+              </div>
+            </div>
+            <div class="setting-row" v-if="outputSizeMode === 'custom'">
+              <label class="setting-label">Width (px)</label>
+              <input type="number" min="500" max="20000" v-model.number="customWidth" class="field-input-sm" />
+              <span class="setting-value">height auto</span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Launch mode -->
+        <div class="settings-section">
+          <h4 class="settings-heading">Launch mode</h4>
+          <label class="launch-mode-option">
+            <input type="radio" value="hugin" v-model="launchMode" />
+            <div>
+              <div class="launch-mode-title">Open in Hugin (interactive)</div>
+              <div class="setting-helper">Hugin opens with your frames loaded. Complete the stitch in Hugin.</div>
+            </div>
+          </label>
+          <label class="launch-mode-option" :class="{ disabled: !quickStitchAvailable }">
+            <input type="radio" value="quickstitch" v-model="launchMode" :disabled="!quickStitchAvailable" />
+            <div>
+              <div class="launch-mode-title">Quick stitch (automatic CLI)</div>
+              <div class="setting-helper">Frame attempts automatic stitching. Works best with level horizon and consistent exposure.</div>
+              <div v-if="!quickStitchAvailable" class="setting-helper quick-stitch-disabled-reason">Requires nona, enblend, and cpfind (bundled with Hugin installation)</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Launch -->
+        <div class="launch-row">
+          <button class="btn btn-accent" :disabled="!canLaunch" @click="launch">
+            {{ launchMode === 'hugin' ? 'Open in Hugin' : 'Run quick stitch' }}
+          </button>
+        </div>
+
+        <!-- Quick stitch progress -->
+        <div v-if="stitching || stitchResult" class="stitch-progress">
+          <div class="stitch-steps">
+            <div
+              v-for="step in STITCH_STEPS"
+              :key="step.id"
+              class="stitch-step"
+              :class="{ active: stitchStep === step.id, done: isStepDone(step.id) }"
+            >{{ isStepDone(step.id) ? '✓ ' : '' }}{{ step.label }}</div>
+          </div>
+
+          <div v-if="stitchLog.length" class="log-wrap" ref="stitchLogWrap">
+            <pre class="log-output">{{ stitchLog.join('\n') }}</pre>
+          </div>
+
+          <div v-if="stitching" class="stitch-actions">
+            <button class="btn btn-danger" @click="cancelStitch">Cancel</button>
+          </div>
+
+          <div v-if="stitchResult && stitchResult.success" class="stitch-complete">
+            <div class="stitch-complete-filename">{{ outputFilename }}</div>
+            <img v-if="stitchThumbnail" :src="stitchThumbnail" class="stitch-complete-thumb" />
+            <div class="stitch-complete-actions">
+              <button class="btn" @click="revealStitchOutput">Reveal in Finder</button>
+              <button class="btn btn-accent" @click="openStitchInGallery">Open in Gallery</button>
+            </div>
+          </div>
+          <div v-if="stitchResult && !stitchResult.success" class="stitch-error">
+            Stitch failed at step "{{ stitchResult.step }}": {{ stitchResult.error }}
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Section 6: Burst Composite -->
+    <section class="section">
+      <h3 class="collapsible" @click="burstSectionOpen = !burstSectionOpen">
+        Burst Composite — Motion Super-Shot
+        <span class="collapse-icon">{{ burstSectionOpen ? '▾' : '▸' }}</span>
+      </h3>
+
+      <div class="tip-card">
+        <span class="tip-card-icon">💡</span>
+        <div class="tip-card-text">
+          Combine multiple frames from a burst into a single composite image showing the full arc of motion.
+          Best for goal sequences, diving saves, and full-body action moments.
+        </div>
+      </div>
+
+      <div v-if="burstSectionOpen" class="section-body">
+
+        <!-- Tool status -->
+        <div class="tool-status">
+          <div class="tool-card">
+            <div class="tool-header">
+              <h4>ffmpeg</h4>
+              <span v-if="tools.ffmpeg" class="badge installed">Installed{{ ffmpegVersion ? ' — v' + ffmpegVersion : '' }}</span>
+              <span v-else class="badge missing">Not Found</span>
+            </div>
+            <div v-if="tools.ffmpeg" class="tool-path">{{ tools.ffmpeg }}</div>
+            <div v-else class="tool-missing">
+              <a class="install-link" @click="openUrl('https://ffmpeg.org')">ffmpeg.org</a>
+              <span class="brew-note">macOS: brew install ffmpeg</span>
+            </div>
+          </div>
+          <div v-if="compositeMode === 'stabilized'" class="tool-card">
+            <div class="tool-header">
+              <h4>Hugin</h4>
+              <span v-if="tools.hugin" class="badge installed">Installed</span>
+              <span v-else class="badge missing">Not Found</span>
+            </div>
+            <div v-if="tools.hugin" class="tool-path">{{ tools.hugin }}</div>
+            <div v-else class="tool-missing">
+              <a class="install-link" @click="openUrl('https://hugin.sourceforge.io')">Download Hugin</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Burst set selector -->
+        <template v-if="session.pendingBurstSetId && !changingBurstSet">
+          <div class="picker-row">
+            <label class="row-label">Set:</label>
+            <span class="path-display">{{ selectedBurstSet?.name || 'Burst set' }} — {{ burstSetFiles.length }} frames{{ keeperFile ? ' — keeper: ' + keeperFile.filename : '' }}</span>
+            <button class="btn" @click="changingBurstSet = true">Change</button>
+          </div>
+        </template>
+        <template v-else-if="session.id">
+          <div class="picker-row">
+            <label class="row-label">Set:</label>
+            <select v-model.number="selectedBurstSetId" class="setting-select" @change="selectBurstSet(selectedBurstSetId)">
+              <option :value="null" disabled>Select a burst set…</option>
+              <option v-for="s in reviewedBurstSets" :key="s.id" :value="s.id">{{ s.name }} — {{ s.frame_count }} frames — {{ formatSetDate(s.created_at) }}</option>
+            </select>
+          </div>
+          <div v-if="!reviewedBurstSets.length" class="preset-note">
+            No burst sets in this session yet. Confirm a set in Gallery first.
+          </div>
+        </template>
+
+        <!-- Frame selection -->
+        <div v-if="burstSetFiles.length" class="frame-select-block">
+          <div class="frame-select-header">
+            <span class="frame-select-count">{{ selectedFrameIds.length }} of {{ burstSetFiles.length }} frames selected</span>
+            <span class="frame-select-links">
+              <a @click="selectAllFrames">Select all</a> · <a @click="deselectAllFrames">Deselect all</a>
+            </span>
+          </div>
+          <div class="burst-frame-strip">
+            <div
+              v-for="f in burstSetFiles"
+              :key="f.id"
+              class="burst-frame-thumb"
+              :class="{ deselected: !selectedFrameIds.includes(f.id) }"
+              @click="toggleFrameSelected(f.id)"
+            >
+              <img v-if="burstThumbnails[f.id]" :src="burstThumbnails[f.id]" />
+              <div v-else class="burst-frame-thumb-placeholder"></div>
+            </div>
+          </div>
+          <div class="setting-helper">
+            Tip: For a clean composite, select 4-8 frames that show distinct positions. Too many frames creates a
+            cluttered result. The keeper frame is included by default.
+          </div>
+        </div>
+
+        <!-- Composite mode -->
+        <div class="settings-section">
+          <h4 class="settings-heading">Composite mode</h4>
+
+          <label class="launch-mode-option">
+            <input type="radio" value="lighten" v-model="compositeMode" />
+            <div>
+              <div class="launch-mode-title">Motion trail (lighten blend)</div>
+              <div class="setting-helper">
+                Combines frames using lighten blend mode. Bright subjects (colored jerseys) show through against
+                darker backgrounds (field, turf). Best for players in motion against green field.
+              </div>
+            </div>
+          </label>
+
+          <label class="launch-mode-option" :class="{ disabled: !tools.hugin }">
+            <input type="radio" value="stabilized" v-model="compositeMode" :disabled="!tools.hugin" />
+            <div>
+              <div class="launch-mode-title">Background-stabilized composite</div>
+              <div class="setting-helper">
+                Aligns frames on the field/background before blending. Produces cleaner results but requires Hugin
+                for alignment. May take 1-2 minutes for alignment step.
+              </div>
+              <div v-if="!tools.hugin" class="setting-helper quick-stitch-disabled-reason">Requires Hugin</div>
+            </div>
+          </label>
+
+          <label class="launch-mode-option">
+            <input type="radio" value="strip" v-model="compositeMode" />
+            <div>
+              <div class="launch-mode-title">Side-by-side sequence strip</div>
+              <div class="setting-helper">
+                Places selected frames in a horizontal strip with thin separators. Good for showing a complete
+                play sequence.
+              </div>
+              <template v-if="compositeMode === 'strip'">
+                <div class="setting-row">
+                  <label class="setting-label">Gap between frames</label>
+                  <input type="range" min="0" max="20" step="1" v-model.number="stripGap" class="slider" />
+                  <span class="setting-value">{{ stripGap }}px gap</span>
+                </div>
+                <div class="setting-row">
+                  <label class="setting-label">Background color</label>
+                  <input type="color" v-model="stripBackground" class="color-input" />
+                </div>
+              </template>
+            </div>
+          </label>
+        </div>
+
+        <!-- Output settings -->
+        <div class="picker-row">
+          <label class="row-label">Output:</label>
+          <button class="btn" @click="pickCompositeOutputFolder">Select Folder</button>
+          <span v-if="compositeOutputFolder" class="path-display">{{ compositeOutputFolder }}</span>
+        </div>
+        <div class="picker-row">
+          <label class="row-label">Filename:</label>
+          <input type="text" v-model="compositeFilename" class="field-input-sm field-input-wide" />
+        </div>
+        <div class="setting-row">
+          <label class="setting-label">JPEG quality</label>
+          <input type="range" min="70" max="100" step="1" v-model.number="compositeQuality" class="slider" />
+          <span class="setting-value">{{ compositeQuality }}</span>
+        </div>
+
+        <!-- Advanced options -->
+        <div class="settings-section">
+          <h4 class="settings-heading collapsible" @click="advancedBurstOpen = !advancedBurstOpen">
+            Advanced options
+            <span class="collapse-icon">{{ advancedBurstOpen ? '▾' : '▸' }}</span>
+          </h4>
+          <template v-if="advancedBurstOpen">
+
+            <template v-if="compositeMode === 'lighten'">
+              <div class="setting-row">
+                <label class="setting-label">Blend mode</label>
+                <select v-model="blendMode" class="setting-select">
+                  <option value="lighten">Lighten</option>
+                  <option value="screen">Screen</option>
+                  <option value="multiply">Multiply</option>
+                  <option value="average">Average</option>
+                </select>
+              </div>
+              <div class="setting-helper">{{ blendModeHelper }}</div>
+
+              <div class="setting-row toggle-row">
+                <label class="setting-label">Pre-scale frames</label>
+                <button class="toggle-btn" :class="{ on: preScale }" @click="preScale = !preScale">
+                  <span class="toggle-knob"></span>
+                </button>
+              </div>
+              <div class="setting-helper">Scale frames to match the keeper's dimensions before blending. Useful if frames are slightly different sizes.</div>
+            </template>
+
+            <template v-if="compositeMode === 'stabilized'">
+              <div class="setting-row">
+                <label class="setting-label">Feature detection sensitivity</label>
+                <div class="dir-toggle">
+                  <button class="dir-btn" :class="{ active: featureSensitivity === 'low' }" @click="featureSensitivity = 'low'">Low</button>
+                  <button class="dir-btn" :class="{ active: featureSensitivity === 'medium' }" @click="featureSensitivity = 'medium'">Medium</button>
+                  <button class="dir-btn" :class="{ active: featureSensitivity === 'high' }" @click="featureSensitivity = 'high'">High</button>
+                </div>
+              </div>
+              <div class="setting-helper">Higher sensitivity finds more alignment points but may be slower.</div>
+
+              <div class="setting-row">
+                <label class="setting-label">Blend method after alignment</label>
+                <select v-model="stabilizedBlend" class="setting-select">
+                  <option value="lighten">Lighten</option>
+                  <option value="enblend" :disabled="!tools.huginCli?.enblend">Enblend</option>
+                  <option value="average">Average</option>
+                </select>
+              </div>
+            </template>
+
+            <template v-if="compositeMode === 'strip'">
+              <div class="setting-row toggle-row">
+                <label class="setting-label">Labels below each frame</label>
+                <button class="toggle-btn" :class="{ on: stripLabels }" @click="stripLabels = !stripLabels">
+                  <span class="toggle-knob"></span>
+                </button>
+              </div>
+              <template v-if="stripLabels">
+                <div class="setting-row">
+                  <label class="setting-label">Font size</label>
+                  <input type="range" min="10" max="16" step="1" v-model.number="stripLabelSize" class="slider" />
+                  <span class="setting-value">{{ stripLabelSize }}px</span>
+                </div>
+                <div class="setting-row">
+                  <label class="setting-label">Label color</label>
+                  <div class="dir-toggle">
+                    <button class="dir-btn" :class="{ active: stripLabelColor === 'white' }" @click="stripLabelColor = 'white'">White</button>
+                    <button class="dir-btn" :class="{ active: stripLabelColor === 'black' }" @click="stripLabelColor = 'black'">Black</button>
+                    <button class="dir-btn" :class="{ active: stripLabelColor === 'accent' }" @click="stripLabelColor = 'accent'">Accent</button>
+                  </div>
+                </div>
+              </template>
+            </template>
+
+          </template>
+        </div>
+
+        <!-- Launch -->
+        <div class="launch-row">
+          <button class="btn btn-accent" :disabled="!canCreateComposite" @click="runCreateComposite">Create composite</button>
+        </div>
+
+        <!-- Progress -->
+        <div v-if="compositing || compositeResult" class="stitch-progress">
+          <div v-if="compositeMode === 'stabilized'" class="stitch-steps">
+            <div
+              v-for="step in COMPOSITE_STABILIZED_STEPS"
+              :key="step.id"
+              class="stitch-step"
+              :class="{ active: compositeStep === step.id, done: isCompositeStepDone(step.id) }"
+            >{{ isCompositeStepDone(step.id) ? '✓ ' : '' }}{{ step.label }}</div>
+          </div>
+          <div v-else-if="compositing" class="composite-simple-progress">Processing {{ selectedFrameIds.length }} frames…</div>
+
+          <div v-if="compositeLog.length" class="log-wrap" ref="compositeLogWrap">
+            <pre class="log-output">{{ compositeLog.join('\n') }}</pre>
+          </div>
+
+          <div v-if="compositeResult && compositeResult.success" class="stitch-complete">
+            <div class="stitch-complete-filename">{{ compositeFilename }}</div>
+            <img v-if="compositeThumbnail" :src="compositeThumbnail" class="stitch-complete-thumb" />
+            <div class="stitch-complete-actions">
+              <button class="btn" @click="revealCompositeOutput">Reveal in Finder</button>
+              <button class="btn btn-accent" @click="openCompositeInGallery">Open in Gallery</button>
+            </div>
+          </div>
+          <div v-if="compositeResult && !compositeResult.success" class="stitch-error">
+            Composite failed{{ compositeResult.step ? ' at step "' + compositeResult.step + '"' : '' }}: {{ compositeResult.error }}
+          </div>
+        </div>
+
+        <!-- Static workflow tip -->
+        <div class="tip-card">
+          <span class="tip-card-icon">💡</span>
+          <div class="tip-card-text">
+            <strong>Composite tip for lacrosse:</strong> For a shot-on-goal sequence, select the frame where the
+            attacker's stick is at full extension (windup), 2-3 frames through the shooting motion, and the frame
+            at ball release. Skip frames where the player is in identical position to adjacent frames — they add
+            blur without adding motion story. The lighten blend mode works best when players wear bright colored
+            jerseys against the green field.
+          </div>
+        </div>
+
+      </div>
+    </section>
   </div>
 </template>
 
 <script>
+const STITCH_STEPS = [
+  { id: 'pto', label: 'Generate .pto' },
+  { id: 'findpoints', label: 'Find control points' },
+  { id: 'optimise', label: 'Optimise' },
+  { id: 'remap', label: 'Remap' },
+  { id: 'blend', label: 'Blend' },
+  { id: 'done', label: 'Done' }
+]
+const STITCH_STEP_ORDER = STITCH_STEPS.map(s => s.id)
+
+const COMPOSITE_STABILIZED_STEPS = [
+  { id: 'load', label: 'Load frames' },
+  { id: 'align', label: 'Align (Hugin)' },
+  { id: 'blend', label: 'Blend' },
+  { id: 'save', label: 'Save' }
+]
+const COMPOSITE_STABILIZED_STEP_ORDER = COMPOSITE_STABILIZED_STEPS.map(s => s.id)
+
+const BLEND_MODE_HELPERS = {
+  lighten: 'Best for bright subjects on dark bg',
+  screen: 'Brighter result, good for dark subjects',
+  multiply: 'Darkening blend, rarely used for sports',
+  average: 'Simple pixel average, ghosted look'
+}
+
 export default {
   name: 'ProcessModule',
   inject: ['toast', 'session', 'updatePipeline'],
+  emits: ['navigate'],
   data() {
     return {
-      tools: { darktable: null, rawtherapee: null },
+      tools: { darktable: null, rawtherapee: null, hugin: null, huginCli: { nona: null, enblend: null, autooptimiser: null, cpfind: null }, ffmpeg: null },
       openTarget: null,
       openTargetType: null,
       batchSource: null,
@@ -252,7 +746,56 @@ export default {
       bwCandidates: [],
       bwThumbnails: {},
       bwStylePresetPath: null,
-      bwLaunching: false
+      bwLaunching: false,
+      STITCH_STEPS,
+      panoSectionOpen: false,
+      advancedPanoOpen: false,
+      confirmedPanoSets: [],
+      selectedPanoSetId: null,
+      changingSet: false,
+      panoSetFiles: [],
+      panoThumbnails: {},
+      folderFiles: [],
+      outputFolder: null,
+      projection: 2,
+      quality: 92,
+      outputSizeMode: 'auto',
+      customWidth: 4000,
+      launchMode: 'hugin',
+      stitching: false,
+      stitchStep: null,
+      stitchLog: [],
+      stitchResult: null,
+      stitchThumbnail: null,
+      _stitchCancelled: false,
+      COMPOSITE_STABILIZED_STEPS,
+      burstSectionOpen: false,
+      advancedBurstOpen: false,
+      ffmpegVersion: null,
+      reviewedBurstSets: [],
+      selectedBurstSetId: null,
+      changingBurstSet: false,
+      burstSetFiles: [],
+      burstThumbnails: {},
+      selectedFrameIds: [],
+      compositeMode: 'lighten',
+      compositeOutputFolder: null,
+      compositeFilename: '',
+      compositeQuality: 92,
+      blendMode: 'lighten',
+      preScale: false,
+      featureSensitivity: 'medium',
+      stabilizedBlend: 'lighten',
+      stripGap: 4,
+      stripBackground: '#1a1a1a',
+      stripLabels: false,
+      stripLabelSize: 12,
+      stripLabelColor: 'white',
+      compositing: false,
+      compositeStep: null,
+      compositeLog: [],
+      compositeResult: null,
+      compositeThumbnail: null
     }
   },
   computed: {
@@ -276,6 +819,47 @@ export default {
         if (count > bestCount) { best = folder; bestCount = count }
       }
       return best
+    },
+    selectedPanoSet() {
+      return this.confirmedPanoSets.find(s => s.id === this.selectedPanoSetId) || null
+    },
+    quickStitchAvailable() {
+      return !!(this.tools.huginCli?.nona && this.tools.huginCli?.enblend && this.tools.huginCli?.autooptimiser && this.tools.huginCli?.cpfind)
+    },
+    canLaunch() {
+      if (!this.panoSetFiles.length) return false
+      if (this.launchMode === 'hugin') return !!this.tools.hugin
+      return this.quickStitchAvailable && !!this.outputFolder
+    },
+    panoTimeSpanText() {
+      const ts = this.panoSetFiles.map(f => f.exif_ts).filter(t => t != null)
+      if (ts.length < 2) return '—'
+      const spanSec = (Math.max(...ts) - Math.min(...ts)) / 1000
+      if (spanSec < 60) return `${spanSec.toFixed(0)}s span`
+      const min = Math.floor(spanSec / 60)
+      const sec = Math.round(spanSec % 60)
+      return sec > 0 ? `${min}m ${sec}s span` : `${min}m span`
+    },
+    outputFilename() {
+      const sanitize = (s) => (s || '').trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+      const sessionName = sanitize(this.session?.name) || 'Session'
+      const setName = sanitize(this.selectedPanoSet?.name) || 'Panorama'
+      return `${sessionName}_${setName}_panorama.jpg`
+    },
+    selectedBurstSet() {
+      return this.reviewedBurstSets.find(s => s.id === this.selectedBurstSetId) || null
+    },
+    keeperFile() {
+      if (!this.selectedBurstSet?.kept_file_id) return null
+      return this.burstSetFiles.find(f => f.id === this.selectedBurstSet.kept_file_id) || null
+    },
+    blendModeHelper() {
+      return BLEND_MODE_HELPERS[this.blendMode] || ''
+    },
+    canCreateComposite() {
+      if (!this.selectedFrameIds.length) return false
+      if (this.compositeMode === 'stabilized' && !this.tools.hugin) return false
+      return true
     }
   },
   async mounted() {
@@ -314,8 +898,61 @@ export default {
     await this.loadBwCandidates()
     this.bwSectionOpen = !!(this.session?.id && this.bwCandidates.length)
     this.loadBwThumbnails()
+
+    this.outputFolder = await window.api.invoke('store:get', 'panoOutputFolder') || null
+    if (this.session?.id) {
+      const sets = await window.api.invoke('pano:listSets', this.session.id)
+      this.confirmedPanoSets = Array.isArray(sets) ? sets.filter(s => s.status === 'confirmed') : []
+    }
+    if (this.session?.pendingPanoSetId) {
+      this.panoSectionOpen = true
+      await this.selectPanoSet(this.session.pendingPanoSetId)
+    }
+
+    this._panoProgressCleanup = window.api.on('tools:panoProgress', ({ step, line }) => {
+      this.stitchStep = step
+      this.stitchLog.push(line)
+      this.$nextTick(() => {
+        const wrap = this.$refs.stitchLogWrap
+        if (wrap) wrap.scrollTop = wrap.scrollHeight
+      })
+    })
+
+    if (this.tools.ffmpeg) {
+      const v = await window.api.invoke('tools:checkFfmpegVersion', this.tools.ffmpeg)
+      if (v && !v.error) this.ffmpegVersion = v.version
+    }
+
+    this.compositeOutputFolder = await window.api.invoke('store:get', 'compositeOutputFolder') || null
+
+    const seqDefaults = await window.api.invoke('store:get', 'sequenceDetectionOptions')
+    if (seqDefaults && typeof seqDefaults === 'object') {
+      if (seqDefaults.defaultCompositeMode) this.compositeMode = seqDefaults.defaultCompositeMode
+      if (seqDefaults.defaultBlendMode) this.blendMode = seqDefaults.defaultBlendMode
+      if (seqDefaults.defaultCompositeQuality) this.compositeQuality = seqDefaults.defaultCompositeQuality
+    }
+
+    if (this.session?.id) {
+      const sets = await window.api.invoke('burst:listSets', this.session.id)
+      this.reviewedBurstSets = Array.isArray(sets) ? sets.filter(s => s.status === 'reviewed' || s.status === 'pending') : []
+    }
+    if (this.session?.pendingBurstSetId) {
+      this.burstSectionOpen = true
+      await this.selectBurstSet(this.session.pendingBurstSetId)
+    }
+
+    this._compositeProgressCleanup = window.api.on('tools:compositeProgress', ({ step, line }) => {
+      this.compositeStep = step
+      this.compositeLog.push(line)
+      this.$nextTick(() => {
+        const wrap = this.$refs.compositeLogWrap
+        if (wrap) wrap.scrollTop = wrap.scrollHeight
+      })
+    })
   },
   beforeUnmount() {
+    if (this._panoProgressCleanup) this._panoProgressCleanup()
+    if (this._compositeProgressCleanup) this._compositeProgressCleanup()
     if (this._progressCleanup) this._progressCleanup()
     this.saveSettings()
   },
@@ -472,6 +1109,228 @@ export default {
       } finally {
         this.bwLaunching = false
       }
+    },
+    isStepDone(stepId) {
+      if (this.stitchResult?.success) return true
+      if (!this.stitchStep) return false
+      return STITCH_STEP_ORDER.indexOf(stepId) < STITCH_STEP_ORDER.indexOf(this.stitchStep)
+    },
+    async selectPanoSet(id) {
+      this.selectedPanoSetId = id
+      this.changingSet = false
+      const files = await window.api.invoke('pano:listFiles', id)
+      this.panoSetFiles = Array.isArray(files) ? files : []
+      await this.loadPanoThumbnails()
+      if (!this.outputFolder && this.panoSetFiles.length) {
+        this.outputFolder = this.panoSetFiles[0].full_path.replace(/\/[^/]+$/, '')
+      }
+    },
+    async pickFolderDirect() {
+      const folder = await window.api.invoke('dialog:openFolder')
+      if (!folder) return
+      const files = await window.api.invoke('fs:scanFolder', folder)
+      this.folderFiles = Array.isArray(files) ? files : []
+      this.panoSetFiles = this.folderFiles.map(f => ({ full_path: f.path, filename: f.name }))
+      await this.loadPanoThumbnails()
+      if (!this.outputFolder) this.outputFolder = folder
+    },
+    async loadPanoThumbnails() {
+      for (const f of this.panoSetFiles) {
+        const key = f.id || f.full_path
+        if (this.panoThumbnails[key]) continue
+        const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 80, height: 54 })
+        this.panoThumbnails = { ...this.panoThumbnails, [key]: thumb }
+      }
+    },
+    async pickOutputFolder() {
+      const folder = await window.api.invoke('dialog:openFolder')
+      if (folder) {
+        this.outputFolder = folder
+        await window.api.invoke('store:set', 'panoOutputFolder', folder)
+      }
+    },
+    launch() {
+      if (this.launchMode === 'hugin') this.openInHugin()
+      else this.runQuickStitchNow()
+    },
+    async openInHugin() {
+      if (!this.tools.hugin || !this.panoSetFiles.length) return
+      await window.api.invoke('tools:openHugin', this.tools.hugin, this.panoSetFiles.map(f => f.full_path))
+    },
+    async runQuickStitchNow() {
+      if (!this.canLaunch || this.stitching) return
+      this.stitching = true
+      this.stitchLog = []
+      this.stitchResult = null
+      this.stitchStep = 'pto'
+      this._stitchCancelled = false
+
+      const outputPath = `${this.outputFolder}/${this.outputFilename}`
+      const result = await window.api.invoke('tools:runQuickStitch', {
+        nonaPath: this.tools.huginCli.nona,
+        enblendPath: this.tools.huginCli.enblend,
+        autooptimiserPath: this.tools.huginCli.autooptimiser,
+        cpfindPath: this.tools.huginCli.cpfind,
+        inputFiles: this.panoSetFiles.map(f => f.full_path),
+        outputPath,
+        projection: this.projection,
+        quality: this.quality,
+        outputWidth: this.outputSizeMode === 'custom' ? this.customWidth : null
+      })
+
+      this.stitching = false
+      this.stitchResult = result
+
+      if (result.success) {
+        this.stitchStep = 'done'
+        this.stitchThumbnail = await window.api.invoke('img:thumbnail', result.outputPath, { width: 200, height: 150 })
+        if (this.selectedPanoSet) {
+          await window.api.invoke('pano:updateSet', this.selectedPanoSet.id, { status: 'stitched', output_path: result.outputPath })
+        }
+      } else if (!this._stitchCancelled) {
+        this.toast(`Stitch failed: ${result.error}`, 'error')
+      }
+    },
+    async cancelStitch() {
+      this._stitchCancelled = true
+      await window.api.invoke('tools:cancelQuickStitch')
+    },
+    async revealStitchOutput() {
+      if (this.stitchResult?.outputPath) await window.api.invoke('tools:revealInFinder', this.stitchResult.outputPath)
+    },
+    async openStitchInGallery() {
+      if (!this.stitchResult?.outputPath) return
+      if (!this.session?.id) {
+        this.$emit('navigate', 'gallery')
+        return
+      }
+      const meta = await window.api.invoke('img:getMetadata', this.stitchResult.outputPath)
+      const groupId = this.panoSetFiles[0]?.group_id || null
+      const res = await window.api.invoke('file:upsert', this.session.id, groupId, {
+        filename: this.outputFilename,
+        full_path: this.stitchResult.outputPath,
+        size_bytes: meta?.size || 0,
+        exif_ts: Date.now()
+      })
+      this.$emit('navigate', 'gallery', { type: 'session-all', sessionId: this.session.id, focusFileId: res?.id })
+    },
+
+    formatSetDate(ts) {
+      if (!ts) return ''
+      return new Date(ts).toLocaleDateString()
+    },
+    async selectBurstSet(id) {
+      this.selectedBurstSetId = id
+      this.changingBurstSet = false
+      const files = await window.api.invoke('burst:listFiles', id)
+      this.burstSetFiles = Array.isArray(files) ? files : []
+      this.selectedFrameIds = this.burstSetFiles.map(f => f.id)
+      await this.loadBurstThumbnails()
+      if (!this.compositeOutputFolder && this.burstSetFiles.length) {
+        this.compositeOutputFolder = this.burstSetFiles[0].full_path.replace(/\/[^/]+$/, '')
+      }
+      const sanitize = (s) => (s || '').trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+      const sessionName = sanitize(this.session?.name) || 'Session'
+      const setName = sanitize(this.selectedBurstSet?.name) || 'Burst'
+      this.compositeFilename = `${sessionName}_${setName}_composite.jpg`
+    },
+    async loadBurstThumbnails() {
+      for (const f of this.burstSetFiles) {
+        if (this.burstThumbnails[f.id]) continue
+        const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 80, height: 54 })
+        this.burstThumbnails = { ...this.burstThumbnails, [f.id]: thumb }
+      }
+    },
+    toggleFrameSelected(fileId) {
+      if (this.selectedFrameIds.includes(fileId)) {
+        this.selectedFrameIds = this.selectedFrameIds.filter(id => id !== fileId)
+      } else {
+        this.selectedFrameIds = [...this.selectedFrameIds, fileId]
+      }
+    },
+    selectAllFrames() {
+      this.selectedFrameIds = this.burstSetFiles.map(f => f.id)
+    },
+    deselectAllFrames() {
+      this.selectedFrameIds = []
+    },
+    async pickCompositeOutputFolder() {
+      const folder = await window.api.invoke('dialog:openFolder')
+      if (folder) {
+        this.compositeOutputFolder = folder
+        await window.api.invoke('store:set', 'compositeOutputFolder', folder)
+      }
+    },
+    isCompositeStepDone(stepId) {
+      if (this.compositeResult?.success) return true
+      if (!this.compositeStep) return false
+      return COMPOSITE_STABILIZED_STEP_ORDER.indexOf(stepId) < COMPOSITE_STABILIZED_STEP_ORDER.indexOf(this.compositeStep)
+    },
+    async runCreateComposite() {
+      if (!this.canCreateComposite || this.compositing) return
+      this.compositing = true
+      this.compositeLog = []
+      this.compositeResult = null
+      this.compositeStep = this.compositeMode === 'stabilized' ? 'load' : null
+
+      const orderedFiles = this.burstSetFiles.filter(f => this.selectedFrameIds.includes(f.id))
+      const outputPath = `${this.compositeOutputFolder}/${this.compositeFilename}`
+
+      const result = await window.api.invoke('tools:createComposite', {
+        ffmpegPath: this.tools.ffmpeg,
+        huginPaths: {
+          hugin: this.tools.hugin,
+          nona: this.tools.huginCli?.nona,
+          enblend: this.tools.huginCli?.enblend,
+          autooptimiser: this.tools.huginCli?.autooptimiser,
+          cpfind: this.tools.huginCli?.cpfind
+        },
+        inputFiles: orderedFiles.map(f => f.full_path),
+        outputPath,
+        mode: this.compositeMode,
+        blendMode: this.blendMode,
+        quality: this.compositeQuality,
+        stripGap: this.stripGap,
+        stripBackground: this.stripBackground,
+        stripLabels: this.stripLabels,
+        stripLabelSize: this.stripLabelSize,
+        stripLabelColor: this.stripLabelColor,
+        featureSensitivity: this.featureSensitivity,
+        stabilizedBlend: this.stabilizedBlend,
+        preScale: this.preScale
+      })
+
+      this.compositing = false
+      this.compositeResult = result
+
+      if (result.success) {
+        this.compositeStep = 'save'
+        this.compositeThumbnail = await window.api.invoke('img:thumbnail', result.outputPath, { width: 200, height: 150 })
+        if (this.selectedBurstSet) {
+          await window.api.invoke('burst:updateSet', this.selectedBurstSet.id, { status: 'composited', composite_path: result.outputPath })
+        }
+      } else {
+        this.toast(`Composite failed: ${result.error}`, 'error')
+      }
+    },
+    async revealCompositeOutput() {
+      if (this.compositeResult?.outputPath) await window.api.invoke('tools:revealInFinder', this.compositeResult.outputPath)
+    },
+    async openCompositeInGallery() {
+      if (!this.compositeResult?.outputPath) return
+      if (!this.session?.id) {
+        this.$emit('navigate', 'gallery')
+        return
+      }
+      const meta = await window.api.invoke('img:getMetadata', this.compositeResult.outputPath)
+      const groupId = this.burstSetFiles[0]?.group_id || null
+      const res = await window.api.invoke('file:upsert', this.session.id, groupId, {
+        filename: this.compositeFilename,
+        full_path: this.compositeResult.outputPath,
+        size_bytes: meta?.size || 0,
+        exif_ts: Date.now()
+      })
+      this.$emit('navigate', 'gallery', { type: 'session-all', sessionId: this.session.id, focusFileId: res?.id })
     }
   }
 }
@@ -849,5 +1708,291 @@ export default {
 
 .tip-card-text strong {
   color: var(--text);
+}
+
+/* ── Panorama Stitching ───────────────────────── */
+.pano-tool-card {
+  margin-bottom: 4px;
+}
+
+.brew-note {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.field-input-sm {
+  width: 100px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+}
+
+.pano-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.pano-thumb-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.pano-preview-thumb {
+  position: relative;
+  width: 80px;
+  height: 54px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface2);
+}
+
+.pano-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pano-preview-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--surface2);
+}
+
+.frame-number {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.pano-preview-meta {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.output-filename {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  color: var(--text);
+}
+
+.radio-group-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.radio-option .setting-helper {
+  margin-top: 0;
+  margin-left: 6px;
+}
+
+.launch-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.launch-mode-option.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.launch-mode-option input[type='radio'] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.launch-mode-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.quick-stitch-disabled-reason {
+  color: #ef5350;
+  opacity: 1;
+  font-style: normal;
+}
+
+.stitch-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.stitch-steps {
+  display: flex;
+  gap: 6px;
+}
+
+.stitch-step {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text2);
+  padding: 6px 4px;
+  border-radius: 5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.stitch-step.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(201, 168, 76, 0.1);
+  font-weight: 600;
+}
+
+.stitch-step.done {
+  color: #66bb6a;
+  border-color: rgba(102, 187, 106, 0.4);
+}
+
+.stitch-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stitch-complete {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.stitch-complete-filename {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.stitch-complete-thumb {
+  max-width: 240px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.stitch-complete-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.stitch-error {
+  font-size: 13px;
+  color: #ef5350;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Burst Composite ─────────────────────────── */
+.field-input-wide {
+  width: 320px;
+}
+
+.color-input {
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+
+.frame-select-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.frame-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.frame-select-links a {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.burst-frame-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.burst-frame-thumb {
+  width: 80px;
+  height: 54px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid var(--accent);
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.burst-frame-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.burst-frame-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--surface2);
+}
+
+.burst-frame-thumb.deselected {
+  opacity: 0.4;
+  border-color: transparent;
+}
+
+.composite-simple-progress {
+  font-size: 13px;
+  color: var(--text2);
 }
 </style>

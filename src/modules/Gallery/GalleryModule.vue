@@ -13,12 +13,36 @@
     <div class="gallery-body">
 
       <SmartAlbumsPanel
+        ref="albumsPanel"
         :active-session="activeSession"
         :selected-source="selectedSource"
+        :selected-pano-set-id="selectedPanoSetId"
+        :selected-burst-set-id="selectedBurstSetId"
         @select="handleSourceSelect"
+        @select-pano-set="handleSelectPanoSet"
+        @select-burst-set="handleSelectBurstSet"
+        @sequences-confirmed="handleSequencesConfirmed"
       />
 
-      <div class="gallery-main">
+      <PanoSetView
+        v-if="selectedPanoSetId"
+        :pano-set-id="selectedPanoSetId"
+        :active-session="activeSession"
+        @close="selectedPanoSetId = null"
+        @set-changed="handlePanoSetChanged"
+        @open-in-hugin="handleOpenInHugin"
+      />
+
+      <BurstSetView
+        v-else-if="selectedBurstSetId"
+        :burst-set-id="selectedBurstSetId"
+        :active-session="activeSession"
+        @close="selectedBurstSetId = null"
+        @set-changed="handleBurstSetChanged"
+        @create-composite="handleCreateComposite"
+      />
+
+      <div class="gallery-main" v-else>
 
         <div v-if="!images.length && !loading" class="empty-state-full">
           <template v-if="selectedSource">
@@ -100,17 +124,19 @@
 <script>
 import ImageViewer from './ImageViewer.vue'
 import SmartAlbumsPanel from './SmartAlbumsPanel.vue'
+import PanoSetView from './PanoSetView.vue'
+import BurstSetView from './BurstSetView.vue'
 
 export default {
   name: 'GalleryModule',
-  inject: ['toast'],
-  components: { ImageViewer, SmartAlbumsPanel },
+  inject: ['toast', 'session'],
+  components: { ImageViewer, SmartAlbumsPanel, PanoSetView, BurstSetView },
   props: {
     sessionState:  { type: Object, default: null },
     activeSession: { type: Object, default: null },
     initialSource: { type: Object, default: null }
   },
-  emits: ['update-state'],
+  emits: ['update-state', 'navigate'],
   data() {
     return {
       folderPath: null,
@@ -125,7 +151,9 @@ export default {
       savedScrollTop: 0,
       selectedSource: null,
       selectedSourceLabel: null,
-      tagDefinitions: []
+      tagDefinitions: [],
+      selectedPanoSetId: null,
+      selectedBurstSetId: null
     }
   },
   computed: {
@@ -157,6 +185,16 @@ export default {
     const defs = await window.api.invoke('tag:listDefinitions')
     if (Array.isArray(defs)) this.tagDefinitions = defs
 
+    if (this.initialSource?.type === 'pano-set') {
+      this.selectedPanoSetId = this.initialSource.panoSetId
+      return
+    }
+
+    if (this.initialSource?.type === 'burst-set') {
+      this.selectedBurstSetId = this.initialSource.burstSetId
+      return
+    }
+
     if (this.initialSource) {
       const labelMap = { kept: 'Kept', deleted: 'Deleted', unreviewed: 'Unreviewed' }
       const label = labelMap[this.initialSource.status] || null
@@ -181,6 +219,8 @@ export default {
   },
   methods: {
     async handleSourceSelect(source, label) {
+      this.selectedPanoSetId = null
+      this.selectedBurstSetId = null
       this.selectedSource = source
       this.selectedSourceLabel = label || null
 
@@ -229,11 +269,18 @@ export default {
 
       this.loading = false
       this.$nextTick(() => this.setupObserver())
+
+      if (source.focusFileId != null) {
+        const idx = this.images.findIndex(img => img.fileId === source.focusFileId)
+        if (idx !== -1) this.openViewer(idx)
+      }
     },
 
     async openFolder() {
       const folder = await window.api.invoke('dialog:openFolder')
       if (folder) {
+        this.selectedPanoSetId = null
+        this.selectedBurstSetId = null
         this.selectedSource = null
         this.selectedSourceLabel = null
         window.api.invoke('store:set', 'galleryLastSource', null)
@@ -312,6 +359,41 @@ export default {
     tagBadgeText(tagName) {
       if (tagName === 'bw-candidate') return 'B&W'
       return this.tagDefinitions.find(d => d.name === tagName)?.label || tagName
+    },
+
+    handleSelectPanoSet(panoSetId) {
+      this.selectedSource = null
+      this.selectedSourceLabel = null
+      this.folderPath = null
+      this.selectedBurstSetId = null
+      this.selectedPanoSetId = panoSetId
+    },
+    handlePanoSetChanged() {
+      // PanoSetView already refreshed its own data (name/frame list); the
+      // sidebar's separate pano_sets list (name, frame_count, status) needs
+      // an explicit nudge or it goes stale until activeSession changes.
+      this.$refs.albumsPanel?.loadPanoSets()
+    },
+    handleSelectBurstSet(burstSetId) {
+      this.selectedSource = null
+      this.selectedSourceLabel = null
+      this.folderPath = null
+      this.selectedPanoSetId = null
+      this.selectedBurstSetId = burstSetId
+    },
+    handleBurstSetChanged() {
+      this.$refs.albumsPanel?.loadBurstSets()
+    },
+    handleSequencesConfirmed({ panoCount, burstCount }) {
+      this.toast(`Created ${panoCount} panorama set${panoCount === 1 ? '' : 's'}, ${burstCount} burst set${burstCount === 1 ? '' : 's'}`, 'success')
+    },
+    handleOpenInHugin(panoSetId) {
+      this.session.pendingPanoSetId = panoSetId
+      this.$emit('navigate', 'process')
+    },
+    handleCreateComposite(burstSetId) {
+      this.session.pendingBurstSetId = burstSetId
+      this.$emit('navigate', 'process')
     },
 
     showContextMenu(e, img) {

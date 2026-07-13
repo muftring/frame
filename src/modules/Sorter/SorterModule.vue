@@ -38,7 +38,7 @@
           v-for="(img, i) in images"
           :key="img.path"
           class="film-thumb"
-          :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept' }"
+          :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept', 'has-pano': img.panoSetId && !img.burstSetId, 'has-burst': img.burstSetId }"
           @click="currentIndex = i"
         >
           <img v-if="img.thumbnail" :src="img.thumbnail" />
@@ -46,7 +46,7 @@
           <div v-if="img.status === 'trashed'" class="thumb-del-badge">del</div>
           <div class="thumb-tag-badges" v-if="img.tags && img.tags.length">
             <span
-              v-for="tagName in img.tags.slice(0, 2)"
+              v-for="tagName in orderedTags(img.tags)"
               :key="tagName"
               class="thumb-tag-badge"
               :style="{ color: tagColor(tagName) }"
@@ -119,6 +119,30 @@
       <div class="empty-hint">Loading images...</div>
     </div>
 
+    <!-- Pano set info bar -->
+    <div v-if="currentImage && currentImage.panoSetId" class="pano-info-bar">
+      <span class="pano-info-text">
+        ⬡ {{ currentImage.panoSetName || 'Panorama' }}  ·  Frame {{ panoFrameNumber }} of {{ panoFrameTotal }}
+      </span>
+      <a class="pano-view-link" @click="viewPanoSet">View set →</a>
+    </div>
+
+    <!-- Burst set info bar -->
+    <div v-if="currentImage && currentImage.burstSetId" class="burst-info-bar">
+      <template v-if="currentBurstStatus === 'reviewed'">
+        <span class="burst-info-text">
+          ⚡ {{ currentImage.burstSetName || 'Burst' }}  ·  Keeper selected ✓
+        </span>
+        <a class="burst-view-link" @click="viewBurstSet">View burst →</a>
+      </template>
+      <template v-else>
+        <span class="burst-info-text">
+          ⚡ {{ currentImage.burstSetName || 'Burst' }}  ·  Frame {{ burstFrameNumber }} of {{ burstFrameTotal }}
+        </span>
+        <a class="burst-view-link" @click="openBurstCompare">Compare burst →</a>
+      </template>
+    </div>
+
     <!-- Action bar -->
     <div class="action-bar" v-if="images.length">
       <button class="btn action-btn" @click="prev" :disabled="currentIndex === 0">Prev</button>
@@ -172,12 +196,27 @@
         </div>
       </div>
     </div>
+
+    <!-- Burst compare overlay -->
+    <BurstCompareView
+      v-if="showBurstCompare"
+      :burst-set-id="activeBurstSetId"
+      :session-id="session.id"
+      @close="closeBurstCompare"
+      @kept="handleBurstKept"
+    />
   </div>
 </template>
 
 <script>
+import BurstCompareView from './BurstCompareView.vue'
+
+const TAG_BADGE_ORDER = ['bw-candidate', 'pano-candidate', 'burst-candidate']
+const TAG_BADGE_ABBREV = { 'bw-candidate': 'B&W', 'pano-candidate': 'PANO', 'burst-candidate': 'BRST' }
+
 export default {
   name: 'SorterModule',
+  components: { BurstCompareView },
   inject: ['toast', 'session', 'updatePipeline'],
   props: {
     initialFolder: { type: String, default: null }
@@ -196,7 +235,10 @@ export default {
       showResumePrompt: false,
       resumeFileId: null,
       tagDefinitions: [],
-      bwPreviewActive: false
+      bwPreviewActive: false,
+      burstSetStatuses: {},
+      showBurstCompare: false,
+      activeBurstSetId: null
     }
   },
   computed: {
@@ -246,6 +288,24 @@ export default {
         if (def.shortcut) map[def.shortcut.toLowerCase()] = def
       }
       return map
+    },
+    panoFrameNumber() {
+      return (this.currentImage?.panoFrameOrder ?? 0) + 1
+    },
+    panoFrameTotal() {
+      if (!this.currentImage?.panoSetId) return 0
+      return this.images.filter(i => i.panoSetId === this.currentImage.panoSetId).length
+    },
+    burstFrameNumber() {
+      return (this.currentImage?.burstFrameOrder ?? 0) + 1
+    },
+    burstFrameTotal() {
+      if (!this.currentImage?.burstSetId) return 0
+      return this.images.filter(i => i.burstSetId === this.currentImage.burstSetId).length
+    },
+    currentBurstStatus() {
+      if (!this.currentImage?.burstSetId) return null
+      return this.burstSetStatuses[this.currentImage.burstSetId] || 'pending'
     }
   },
   watch: {
@@ -275,9 +335,18 @@ export default {
     clearTimeout(this._lastFileTimer)
   },
   methods: {
+    async loadBurstSetStatuses() {
+      if (!this.session?.id) return
+      const sets = await window.api.invoke('burst:listSets', this.session.id)
+      if (!Array.isArray(sets)) return
+      const map = {}
+      for (const s of sets) map[s.id] = s.status
+      this.burstSetStatuses = map
+    },
     async loadSessionFiles() {
       this.loading = true
       this.images = []
+      await this.loadBurstSetStatuses()
       const groups = await window.api.invoke('group:list', this.session.id)
       if (!Array.isArray(groups)) { this.loading = false; return }
 
@@ -296,7 +365,13 @@ export default {
               trashedAt: f.trashed_at || null,
               groupId: group.id,
               groupLabel: group.label,
-              tags: (() => { try { return JSON.parse(f.tags || '[]') } catch { return [] } })()
+              tags: (() => { try { return JSON.parse(f.tags || '[]') } catch { return [] } })(),
+              panoSetId: f.pano_set_id || null,
+              panoSetName: f.pano_set_name || null,
+              panoFrameOrder: f.pano_frame_order,
+              burstSetId: f.burst_set_id || null,
+              burstSetName: f.burst_set_name || null,
+              burstFrameOrder: f.burst_frame_order
             })
           }
         }
@@ -359,7 +434,13 @@ export default {
         trashedAt: null,
         groupId: null,
         groupLabel: null,
-        tags: []
+        tags: [],
+        panoSetId: null,
+        panoSetName: null,
+        panoFrameOrder: null,
+        burstSetId: null,
+        burstSetName: null,
+        burstFrameOrder: null
       }))
 
       this.loading = false
@@ -467,7 +548,7 @@ export default {
       if (this.currentIndex < this.images.length - 1) this.currentIndex++
     },
     handleKeydown(e) {
-      if (this.confirmEmptyTrash || this.showCleanupModal) return
+      if (this.confirmEmptyTrash || this.showCleanupModal || this.showBurstCompare) return
       switch (e.key) {
         case 'ArrowLeft': this.prev(); e.preventDefault(); break
         case 'ArrowRight': this.next(); e.preventDefault(); break
@@ -476,6 +557,9 @@ export default {
         case 'Escape': this.trashPanelOpen = false; break
         case 'p': case 'P':
           if (!this.tagShortcutsSuppressed(e)) this.toggleBwPreview()
+          break
+        case 'c': case 'C':
+          if (!this.tagShortcutsSuppressed(e) && this.currentImage?.burstSetId) this.openBurstCompare()
           break
         default: {
           const tagDef = this.tagShortcutMap[e.key.toLowerCase()]
@@ -506,8 +590,44 @@ export default {
       return this.tagDefinitions.find(d => d.name === tagName)?.color || '#888888'
     },
     tagBadgeText(tagName) {
-      if (tagName === 'bw-candidate') return 'B&W'
+      if (TAG_BADGE_ABBREV[tagName]) return TAG_BADGE_ABBREV[tagName]
       return this.tagDefinitions.find(d => d.name === tagName)?.label || tagName
+    },
+    // Canonical left-to-right badge order (B&W, PANO, BURST); any tag
+    // outside that set (future tags) is appended at the end.
+    orderedTags(tags) {
+      const known = TAG_BADGE_ORDER.filter(t => tags.includes(t))
+      const other = tags.filter(t => !TAG_BADGE_ORDER.includes(t))
+      return [...known, ...other]
+    },
+    viewPanoSet() {
+      if (!this.currentImage?.panoSetId) return
+      this.$emit('navigate', 'gallery', { type: 'pano-set', panoSetId: this.currentImage.panoSetId })
+    },
+    viewBurstSet() {
+      if (!this.currentImage?.burstSetId) return
+      this.$emit('navigate', 'gallery', { type: 'burst-set', burstSetId: this.currentImage.burstSetId })
+    },
+    openBurstCompare() {
+      if (!this.currentImage?.burstSetId) return
+      this.activeBurstSetId = this.currentImage.burstSetId
+      this.showBurstCompare = true
+    },
+    closeBurstCompare() {
+      this.showBurstCompare = false
+      this.activeBurstSetId = null
+    },
+    async handleBurstKept({ burstSetId, keeperFileId, keeperFilename, otherCount }) {
+      this.showBurstCompare = false
+      this.activeBurstSetId = null
+      this.burstSetStatuses = { ...this.burstSetStatuses, [burstSetId]: 'reviewed' }
+      for (const img of this.images) {
+        if (img.burstSetId !== burstSetId) continue
+        img.status = img.fileId === keeperFileId ? 'kept' : 'trashed'
+      }
+      this.toast(`Kept ${keeperFilename}, deleted ${otherCount} other frame${otherCount !== 1 ? 's' : ''}`, 'success')
+      const nextIdx = this.images.findIndex((img, i) => i > this.currentIndex && img.burstSetId !== burstSetId)
+      if (nextIdx !== -1) this.currentIndex = nextIdx
     },
     handleImageError(e) {
       if (this.currentImage && this.currentImage.thumbnail) {
@@ -676,6 +796,17 @@ export default {
   border-left-color: var(--accent);
 }
 
+/* outline (not border) so this doesn't fight the border-left status strip */
+.film-thumb.has-pano {
+  outline: 1.5px solid #4a90d9;
+  outline-offset: -1.5px;
+}
+
+.film-thumb.has-burst {
+  outline: 1.5px solid #e8943a;
+  outline-offset: -1.5px;
+}
+
 .thumb-placeholder {
   width: 100%;
   height: 68px;
@@ -810,6 +941,52 @@ export default {
   height: 100%;
   background: var(--accent);
   transition: width 0.15s ease;
+}
+
+/* Pano set info bar */
+.pano-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: rgba(74, 144, 217, 0.12);
+  border-top: 1px solid rgba(74, 144, 217, 0.3);
+  color: #4a90d9;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pano-view-link {
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+  color: #4a90d9;
+}
+.pano-view-link:hover {
+  color: #3a7ab8;
+}
+
+/* Burst set info bar */
+.burst-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: rgba(232, 148, 58, 0.12);
+  border-top: 1px solid rgba(232, 148, 58, 0.3);
+  color: #e8943a;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.burst-view-link {
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+  color: #e8943a;
+}
+.burst-view-link:hover {
+  color: #c67826;
 }
 
 /* Action bar */

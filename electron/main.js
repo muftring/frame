@@ -6,6 +6,7 @@ const imageProcessor = require('./services/imageProcessor')
 const toolLauncher = require('./services/toolLauncher')
 const uploadService = require('./services/uploadService')
 const sessionStore = require('./services/sessionStore')
+const sequenceDetector = require('./services/sequenceDetector')
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/muftring/frame'
@@ -36,12 +37,22 @@ ipcMain.handle('img:flip', (_, filePath, direction, outputPath) => imageProcesso
 ipcMain.handle('img:getFullMetadata', (_, filePath) => imageProcessor.getFullMetadata(filePath))
 ipcMain.handle('img:getMetadataBatch', (_, filePaths) => imageProcessor.getMetadataBatch(filePaths))
 
-ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
+ipcMain.handle('tools:findInstalled', async () => {
+  const store = await getStore()
+  const frameSettings = store.get('frameSettings') || {}
+  return toolLauncher.findInstalled({ ffmpegPath: frameSettings.ffmpegPath, huginPath: frameSettings.huginPath })
+})
+ipcMain.handle('tools:findStandardPaths', () => toolLauncher.findStandardPaths())
 ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
 ipcMain.handle('tools:openFolder', (_, toolPath, folderPath) => toolLauncher.openFolder(toolPath, folderPath))
 ipcMain.handle('tools:openFiles', (_, toolPath, filePaths, styleName) => toolLauncher.openFiles(toolPath, filePaths, styleName))
 ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolder, presetPath) =>
   toolLauncher.runBatchExport(toolPath, inputPaths, outputFolder, presetPath, event.sender))
+ipcMain.handle('tools:openHugin', (_, huginPath, filePaths) => toolLauncher.openHugin(huginPath, filePaths))
+ipcMain.handle('tools:runQuickStitch', (event, options) => toolLauncher.runQuickStitch(options, event.sender))
+ipcMain.handle('tools:cancelQuickStitch', () => toolLauncher.cancelQuickStitch())
+ipcMain.handle('tools:checkFfmpegVersion', (_, ffmpegPath) => toolLauncher.checkFfmpegVersion(ffmpegPath))
+ipcMain.handle('tools:createComposite', (event, options) => toolLauncher.createComposite(options, event.sender))
 ipcMain.handle('tools:revealInFinder', (_, filePath) => {
   shell.showItemInFolder(filePath)
   return { success: true }
@@ -209,6 +220,28 @@ ipcMain.handle('tag:removeFromFile', (_, fileId, tagName) => sessionStore.tagRem
 ipcMain.handle('tag:toggleOnFile', (_, fileId, tagName) => sessionStore.tagToggleOnFile(fileId, tagName))
 ipcMain.handle('tag:listByTag', (_, tagName, sessionId) => sessionStore.tagListByTag(tagName, sessionId))
 ipcMain.handle('tag:listByFile', (_, fileId) => sessionStore.tagListByFile(fileId))
+
+ipcMain.handle('pano:confirmSet', (_, sessionId, fileIds, name) => sessionStore.panoConfirmSet(sessionId, fileIds, name))
+ipcMain.handle('pano:updateSet', (_, panoSetId, fields) => sessionStore.panoUpdateSet(panoSetId, fields))
+ipcMain.handle('pano:deleteSet', (_, panoSetId) => sessionStore.panoDeleteSet(panoSetId))
+ipcMain.handle('pano:listSets', (_, sessionId) => sessionStore.panoListSets(sessionId))
+ipcMain.handle('pano:listFiles', (_, panoSetId) => sessionStore.panoListFiles(panoSetId))
+ipcMain.handle('pano:addFile', (_, panoSetId, fileId) => sessionStore.panoAddFile(panoSetId, fileId))
+ipcMain.handle('pano:removeFile', (_, panoSetId, fileId) => sessionStore.panoRemoveFile(panoSetId, fileId))
+ipcMain.handle('pano:reorderFrames', (_, panoSetId, orderedFileIds) => sessionStore.panoReorderFrames(panoSetId, orderedFileIds))
+
+ipcMain.handle('burst:confirmSet', (_, sessionId, fileIds, name) => sessionStore.burstConfirmSet(sessionId, fileIds, name))
+ipcMain.handle('burst:updateSet', (_, burstSetId, fields) => sessionStore.burstUpdateSet(burstSetId, fields))
+ipcMain.handle('burst:deleteSet', (_, burstSetId) => sessionStore.burstDeleteSet(burstSetId))
+ipcMain.handle('burst:listSets', (_, sessionId) => sessionStore.burstListSets(sessionId))
+ipcMain.handle('burst:listFiles', (_, burstSetId) => sessionStore.burstListFiles(burstSetId))
+ipcMain.handle('burst:addFile', (_, burstSetId, fileId) => sessionStore.burstAddFile(burstSetId, fileId))
+ipcMain.handle('burst:removeFile', (_, burstSetId, fileId) => sessionStore.burstRemoveFile(burstSetId, fileId))
+ipcMain.handle('burst:reorderFrames', (_, burstSetId, orderedFileIds) => sessionStore.burstReorderFrames(burstSetId, orderedFileIds))
+ipcMain.handle('burst:setKeeper', (_, burstSetId, fileId) => sessionStore.burstSetKeeper(burstSetId, fileId))
+
+ipcMain.handle('sequence:detectGroups', (_, sessionId, options) => sequenceDetector.detectGroups(sessionId, options))
+ipcMain.handle('sequence:getDetectionHistory', (_, sessionId) => sequenceDetector.getDetectionHistory(sessionId))
 
 ipcMain.handle('album:create', (_, name, rules, scope, sessionId, sortBy, sortDir) =>
   sessionStore.albumCreate(name, rules, scope, sessionId, sortBy, sortDir))
