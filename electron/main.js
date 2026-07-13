@@ -46,6 +46,8 @@ ipcMain.handle('tools:runBatchExport', (event, toolPath, inputPaths, outputFolde
 ipcMain.handle('tools:openHugin', (_, huginPath, filePaths) => toolLauncher.openHugin(huginPath, filePaths))
 ipcMain.handle('tools:runQuickStitch', (event, options) => toolLauncher.runQuickStitch(options, event.sender))
 ipcMain.handle('tools:cancelQuickStitch', () => toolLauncher.cancelQuickStitch())
+ipcMain.handle('tools:checkFfmpegVersion', (_, ffmpegPath) => toolLauncher.checkFfmpegVersion(ffmpegPath))
+ipcMain.handle('tools:createComposite', (event, options) => toolLauncher.createComposite(options, event.sender))
 ipcMain.handle('tools:revealInFinder', (_, filePath) => {
   shell.showItemInFolder(filePath)
   return { success: true }

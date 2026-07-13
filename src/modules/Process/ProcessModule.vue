@@ -409,6 +409,289 @@
 
       </div>
     </section>
+
+    <!-- Section 6: Burst Composite -->
+    <section class="section">
+      <h3 class="collapsible" @click="burstSectionOpen = !burstSectionOpen">
+        Burst Composite — Motion Super-Shot
+        <span class="collapse-icon">{{ burstSectionOpen ? '▾' : '▸' }}</span>
+      </h3>
+
+      <div class="tip-card">
+        <span class="tip-card-icon">💡</span>
+        <div class="tip-card-text">
+          Combine multiple frames from a burst into a single composite image showing the full arc of motion.
+          Best for goal sequences, diving saves, and full-body action moments.
+        </div>
+      </div>
+
+      <div v-if="burstSectionOpen" class="section-body">
+
+        <!-- Tool status -->
+        <div class="tool-status">
+          <div class="tool-card">
+            <div class="tool-header">
+              <h4>ffmpeg</h4>
+              <span v-if="tools.ffmpeg" class="badge installed">Installed{{ ffmpegVersion ? ' — v' + ffmpegVersion : '' }}</span>
+              <span v-else class="badge missing">Not Found</span>
+            </div>
+            <div v-if="tools.ffmpeg" class="tool-path">{{ tools.ffmpeg }}</div>
+            <div v-else class="tool-missing">
+              <a class="install-link" @click="openUrl('https://ffmpeg.org')">ffmpeg.org</a>
+              <span class="brew-note">macOS: brew install ffmpeg</span>
+            </div>
+          </div>
+          <div v-if="compositeMode === 'stabilized'" class="tool-card">
+            <div class="tool-header">
+              <h4>Hugin</h4>
+              <span v-if="tools.hugin" class="badge installed">Installed</span>
+              <span v-else class="badge missing">Not Found</span>
+            </div>
+            <div v-if="tools.hugin" class="tool-path">{{ tools.hugin }}</div>
+            <div v-else class="tool-missing">
+              <a class="install-link" @click="openUrl('https://hugin.sourceforge.io')">Download Hugin</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Burst set selector -->
+        <template v-if="session.pendingBurstSetId && !changingBurstSet">
+          <div class="picker-row">
+            <label class="row-label">Set:</label>
+            <span class="path-display">{{ selectedBurstSet?.name || 'Burst set' }} — {{ burstSetFiles.length }} frames{{ keeperFile ? ' — keeper: ' + keeperFile.filename : '' }}</span>
+            <button class="btn" @click="changingBurstSet = true">Change</button>
+          </div>
+        </template>
+        <template v-else-if="session.id">
+          <div class="picker-row">
+            <label class="row-label">Set:</label>
+            <select v-model.number="selectedBurstSetId" class="setting-select" @change="selectBurstSet(selectedBurstSetId)">
+              <option :value="null" disabled>Select a burst set…</option>
+              <option v-for="s in reviewedBurstSets" :key="s.id" :value="s.id">{{ s.name }} — {{ s.frame_count }} frames — {{ formatSetDate(s.created_at) }}</option>
+            </select>
+          </div>
+          <div v-if="!reviewedBurstSets.length" class="preset-note">
+            No burst sets in this session yet. Confirm a set in Gallery first.
+          </div>
+        </template>
+
+        <!-- Frame selection -->
+        <div v-if="burstSetFiles.length" class="frame-select-block">
+          <div class="frame-select-header">
+            <span class="frame-select-count">{{ selectedFrameIds.length }} of {{ burstSetFiles.length }} frames selected</span>
+            <span class="frame-select-links">
+              <a @click="selectAllFrames">Select all</a> · <a @click="deselectAllFrames">Deselect all</a>
+            </span>
+          </div>
+          <div class="burst-frame-strip">
+            <div
+              v-for="f in burstSetFiles"
+              :key="f.id"
+              class="burst-frame-thumb"
+              :class="{ deselected: !selectedFrameIds.includes(f.id) }"
+              @click="toggleFrameSelected(f.id)"
+            >
+              <img v-if="burstThumbnails[f.id]" :src="burstThumbnails[f.id]" />
+              <div v-else class="burst-frame-thumb-placeholder"></div>
+            </div>
+          </div>
+          <div class="setting-helper">
+            Tip: For a clean composite, select 4-8 frames that show distinct positions. Too many frames creates a
+            cluttered result. The keeper frame is included by default.
+          </div>
+        </div>
+
+        <!-- Composite mode -->
+        <div class="settings-section">
+          <h4 class="settings-heading">Composite mode</h4>
+
+          <label class="launch-mode-option">
+            <input type="radio" value="lighten" v-model="compositeMode" />
+            <div>
+              <div class="launch-mode-title">Motion trail (lighten blend)</div>
+              <div class="setting-helper">
+                Combines frames using lighten blend mode. Bright subjects (colored jerseys) show through against
+                darker backgrounds (field, turf). Best for players in motion against green field.
+              </div>
+            </div>
+          </label>
+
+          <label class="launch-mode-option" :class="{ disabled: !tools.hugin }">
+            <input type="radio" value="stabilized" v-model="compositeMode" :disabled="!tools.hugin" />
+            <div>
+              <div class="launch-mode-title">Background-stabilized composite</div>
+              <div class="setting-helper">
+                Aligns frames on the field/background before blending. Produces cleaner results but requires Hugin
+                for alignment. May take 1-2 minutes for alignment step.
+              </div>
+              <div v-if="!tools.hugin" class="setting-helper quick-stitch-disabled-reason">Requires Hugin</div>
+            </div>
+          </label>
+
+          <label class="launch-mode-option">
+            <input type="radio" value="strip" v-model="compositeMode" />
+            <div>
+              <div class="launch-mode-title">Side-by-side sequence strip</div>
+              <div class="setting-helper">
+                Places selected frames in a horizontal strip with thin separators. Good for showing a complete
+                play sequence.
+              </div>
+              <template v-if="compositeMode === 'strip'">
+                <div class="setting-row">
+                  <label class="setting-label">Gap between frames</label>
+                  <input type="range" min="0" max="20" step="1" v-model.number="stripGap" class="slider" />
+                  <span class="setting-value">{{ stripGap }}px gap</span>
+                </div>
+                <div class="setting-row">
+                  <label class="setting-label">Background color</label>
+                  <input type="color" v-model="stripBackground" class="color-input" />
+                </div>
+              </template>
+            </div>
+          </label>
+        </div>
+
+        <!-- Output settings -->
+        <div class="picker-row">
+          <label class="row-label">Output:</label>
+          <button class="btn" @click="pickCompositeOutputFolder">Select Folder</button>
+          <span v-if="compositeOutputFolder" class="path-display">{{ compositeOutputFolder }}</span>
+        </div>
+        <div class="picker-row">
+          <label class="row-label">Filename:</label>
+          <input type="text" v-model="compositeFilename" class="field-input-sm field-input-wide" />
+        </div>
+        <div class="setting-row">
+          <label class="setting-label">JPEG quality</label>
+          <input type="range" min="70" max="100" step="1" v-model.number="compositeQuality" class="slider" />
+          <span class="setting-value">{{ compositeQuality }}</span>
+        </div>
+
+        <!-- Advanced options -->
+        <div class="settings-section">
+          <h4 class="settings-heading collapsible" @click="advancedBurstOpen = !advancedBurstOpen">
+            Advanced options
+            <span class="collapse-icon">{{ advancedBurstOpen ? '▾' : '▸' }}</span>
+          </h4>
+          <template v-if="advancedBurstOpen">
+
+            <template v-if="compositeMode === 'lighten'">
+              <div class="setting-row">
+                <label class="setting-label">Blend mode</label>
+                <select v-model="blendMode" class="setting-select">
+                  <option value="lighten">Lighten</option>
+                  <option value="screen">Screen</option>
+                  <option value="multiply">Multiply</option>
+                  <option value="average">Average</option>
+                </select>
+              </div>
+              <div class="setting-helper">{{ blendModeHelper }}</div>
+
+              <div class="setting-row toggle-row">
+                <label class="setting-label">Pre-scale frames</label>
+                <button class="toggle-btn" :class="{ on: preScale }" @click="preScale = !preScale">
+                  <span class="toggle-knob"></span>
+                </button>
+              </div>
+              <div class="setting-helper">Scale frames to match the keeper's dimensions before blending. Useful if frames are slightly different sizes.</div>
+            </template>
+
+            <template v-if="compositeMode === 'stabilized'">
+              <div class="setting-row">
+                <label class="setting-label">Feature detection sensitivity</label>
+                <div class="dir-toggle">
+                  <button class="dir-btn" :class="{ active: featureSensitivity === 'low' }" @click="featureSensitivity = 'low'">Low</button>
+                  <button class="dir-btn" :class="{ active: featureSensitivity === 'medium' }" @click="featureSensitivity = 'medium'">Medium</button>
+                  <button class="dir-btn" :class="{ active: featureSensitivity === 'high' }" @click="featureSensitivity = 'high'">High</button>
+                </div>
+              </div>
+              <div class="setting-helper">Higher sensitivity finds more alignment points but may be slower.</div>
+
+              <div class="setting-row">
+                <label class="setting-label">Blend method after alignment</label>
+                <select v-model="stabilizedBlend" class="setting-select">
+                  <option value="lighten">Lighten</option>
+                  <option value="enblend" :disabled="!tools.huginCli?.enblend">Enblend</option>
+                  <option value="average">Average</option>
+                </select>
+              </div>
+            </template>
+
+            <template v-if="compositeMode === 'strip'">
+              <div class="setting-row toggle-row">
+                <label class="setting-label">Labels below each frame</label>
+                <button class="toggle-btn" :class="{ on: stripLabels }" @click="stripLabels = !stripLabels">
+                  <span class="toggle-knob"></span>
+                </button>
+              </div>
+              <template v-if="stripLabels">
+                <div class="setting-row">
+                  <label class="setting-label">Font size</label>
+                  <input type="range" min="10" max="16" step="1" v-model.number="stripLabelSize" class="slider" />
+                  <span class="setting-value">{{ stripLabelSize }}px</span>
+                </div>
+                <div class="setting-row">
+                  <label class="setting-label">Label color</label>
+                  <div class="dir-toggle">
+                    <button class="dir-btn" :class="{ active: stripLabelColor === 'white' }" @click="stripLabelColor = 'white'">White</button>
+                    <button class="dir-btn" :class="{ active: stripLabelColor === 'black' }" @click="stripLabelColor = 'black'">Black</button>
+                    <button class="dir-btn" :class="{ active: stripLabelColor === 'accent' }" @click="stripLabelColor = 'accent'">Accent</button>
+                  </div>
+                </div>
+              </template>
+            </template>
+
+          </template>
+        </div>
+
+        <!-- Launch -->
+        <div class="launch-row">
+          <button class="btn btn-accent" :disabled="!canCreateComposite" @click="runCreateComposite">Create composite</button>
+        </div>
+
+        <!-- Progress -->
+        <div v-if="compositing || compositeResult" class="stitch-progress">
+          <div v-if="compositeMode === 'stabilized'" class="stitch-steps">
+            <div
+              v-for="step in COMPOSITE_STABILIZED_STEPS"
+              :key="step.id"
+              class="stitch-step"
+              :class="{ active: compositeStep === step.id, done: isCompositeStepDone(step.id) }"
+            >{{ isCompositeStepDone(step.id) ? '✓ ' : '' }}{{ step.label }}</div>
+          </div>
+          <div v-else-if="compositing" class="composite-simple-progress">Processing {{ selectedFrameIds.length }} frames…</div>
+
+          <div v-if="compositeLog.length" class="log-wrap" ref="compositeLogWrap">
+            <pre class="log-output">{{ compositeLog.join('\n') }}</pre>
+          </div>
+
+          <div v-if="compositeResult && compositeResult.success" class="stitch-complete">
+            <div class="stitch-complete-filename">{{ compositeFilename }}</div>
+            <img v-if="compositeThumbnail" :src="compositeThumbnail" class="stitch-complete-thumb" />
+            <div class="stitch-complete-actions">
+              <button class="btn" @click="revealCompositeOutput">Reveal in Finder</button>
+              <button class="btn btn-accent" @click="openCompositeInGallery">Open in Gallery</button>
+            </div>
+          </div>
+          <div v-if="compositeResult && !compositeResult.success" class="stitch-error">
+            Composite failed{{ compositeResult.step ? ' at step "' + compositeResult.step + '"' : '' }}: {{ compositeResult.error }}
+          </div>
+        </div>
+
+        <!-- Static workflow tip -->
+        <div class="tip-card">
+          <span class="tip-card-icon">💡</span>
+          <div class="tip-card-text">
+            <strong>Composite tip for lacrosse:</strong> For a shot-on-goal sequence, select the frame where the
+            attacker's stick is at full extension (windup), 2-3 frames through the shooting motion, and the frame
+            at ball release. Skip frames where the player is in identical position to adjacent frames — they add
+            blur without adding motion story. The lighten blend mode works best when players wear bright colored
+            jerseys against the green field.
+          </div>
+        </div>
+
+      </div>
+    </section>
   </div>
 </template>
 
@@ -423,13 +706,28 @@ const STITCH_STEPS = [
 ]
 const STITCH_STEP_ORDER = STITCH_STEPS.map(s => s.id)
 
+const COMPOSITE_STABILIZED_STEPS = [
+  { id: 'load', label: 'Load frames' },
+  { id: 'align', label: 'Align (Hugin)' },
+  { id: 'blend', label: 'Blend' },
+  { id: 'save', label: 'Save' }
+]
+const COMPOSITE_STABILIZED_STEP_ORDER = COMPOSITE_STABILIZED_STEPS.map(s => s.id)
+
+const BLEND_MODE_HELPERS = {
+  lighten: 'Best for bright subjects on dark bg',
+  screen: 'Brighter result, good for dark subjects',
+  multiply: 'Darkening blend, rarely used for sports',
+  average: 'Simple pixel average, ghosted look'
+}
+
 export default {
   name: 'ProcessModule',
   inject: ['toast', 'session', 'updatePipeline'],
   emits: ['navigate'],
   data() {
     return {
-      tools: { darktable: null, rawtherapee: null, hugin: null, huginCli: { nona: null, enblend: null, autooptimiser: null, cpfind: null } },
+      tools: { darktable: null, rawtherapee: null, hugin: null, huginCli: { nona: null, enblend: null, autooptimiser: null, cpfind: null }, ffmpeg: null },
       openTarget: null,
       openTargetType: null,
       batchSource: null,
@@ -469,7 +767,35 @@ export default {
       stitchLog: [],
       stitchResult: null,
       stitchThumbnail: null,
-      _stitchCancelled: false
+      _stitchCancelled: false,
+      COMPOSITE_STABILIZED_STEPS,
+      burstSectionOpen: false,
+      advancedBurstOpen: false,
+      ffmpegVersion: null,
+      reviewedBurstSets: [],
+      selectedBurstSetId: null,
+      changingBurstSet: false,
+      burstSetFiles: [],
+      burstThumbnails: {},
+      selectedFrameIds: [],
+      compositeMode: 'lighten',
+      compositeOutputFolder: null,
+      compositeFilename: '',
+      compositeQuality: 92,
+      blendMode: 'lighten',
+      preScale: false,
+      featureSensitivity: 'medium',
+      stabilizedBlend: 'lighten',
+      stripGap: 4,
+      stripBackground: '#1a1a1a',
+      stripLabels: false,
+      stripLabelSize: 12,
+      stripLabelColor: 'white',
+      compositing: false,
+      compositeStep: null,
+      compositeLog: [],
+      compositeResult: null,
+      compositeThumbnail: null
     }
   },
   computed: {
@@ -519,6 +845,21 @@ export default {
       const sessionName = sanitize(this.session?.name) || 'Session'
       const setName = sanitize(this.selectedPanoSet?.name) || 'Panorama'
       return `${sessionName}_${setName}_panorama.jpg`
+    },
+    selectedBurstSet() {
+      return this.reviewedBurstSets.find(s => s.id === this.selectedBurstSetId) || null
+    },
+    keeperFile() {
+      if (!this.selectedBurstSet?.kept_file_id) return null
+      return this.burstSetFiles.find(f => f.id === this.selectedBurstSet.kept_file_id) || null
+    },
+    blendModeHelper() {
+      return BLEND_MODE_HELPERS[this.blendMode] || ''
+    },
+    canCreateComposite() {
+      if (!this.selectedFrameIds.length) return false
+      if (this.compositeMode === 'stabilized' && !this.tools.hugin) return false
+      return true
     }
   },
   async mounted() {
@@ -576,9 +917,34 @@ export default {
         if (wrap) wrap.scrollTop = wrap.scrollHeight
       })
     })
+
+    if (this.tools.ffmpeg) {
+      const v = await window.api.invoke('tools:checkFfmpegVersion', this.tools.ffmpeg)
+      if (v && !v.error) this.ffmpegVersion = v.version
+    }
+
+    this.compositeOutputFolder = await window.api.invoke('store:get', 'compositeOutputFolder') || null
+    if (this.session?.id) {
+      const sets = await window.api.invoke('burst:listSets', this.session.id)
+      this.reviewedBurstSets = Array.isArray(sets) ? sets.filter(s => s.status === 'reviewed' || s.status === 'pending') : []
+    }
+    if (this.session?.pendingBurstSetId) {
+      this.burstSectionOpen = true
+      await this.selectBurstSet(this.session.pendingBurstSetId)
+    }
+
+    this._compositeProgressCleanup = window.api.on('tools:compositeProgress', ({ step, line }) => {
+      this.compositeStep = step
+      this.compositeLog.push(line)
+      this.$nextTick(() => {
+        const wrap = this.$refs.compositeLogWrap
+        if (wrap) wrap.scrollTop = wrap.scrollHeight
+      })
+    })
   },
   beforeUnmount() {
     if (this._panoProgressCleanup) this._panoProgressCleanup()
+    if (this._compositeProgressCleanup) this._compositeProgressCleanup()
     if (this._progressCleanup) this._progressCleanup()
     this.saveSettings()
   },
@@ -835,6 +1201,124 @@ export default {
       const res = await window.api.invoke('file:upsert', this.session.id, groupId, {
         filename: this.outputFilename,
         full_path: this.stitchResult.outputPath,
+        size_bytes: meta?.size || 0,
+        exif_ts: Date.now()
+      })
+      this.$emit('navigate', 'gallery', { type: 'session-all', sessionId: this.session.id, focusFileId: res?.id })
+    },
+
+    formatSetDate(ts) {
+      if (!ts) return ''
+      return new Date(ts).toLocaleDateString()
+    },
+    async selectBurstSet(id) {
+      this.selectedBurstSetId = id
+      this.changingBurstSet = false
+      const files = await window.api.invoke('burst:listFiles', id)
+      this.burstSetFiles = Array.isArray(files) ? files : []
+      this.selectedFrameIds = this.burstSetFiles.map(f => f.id)
+      await this.loadBurstThumbnails()
+      if (!this.compositeOutputFolder && this.burstSetFiles.length) {
+        this.compositeOutputFolder = this.burstSetFiles[0].full_path.replace(/\/[^/]+$/, '')
+      }
+      const sanitize = (s) => (s || '').trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+      const sessionName = sanitize(this.session?.name) || 'Session'
+      const setName = sanitize(this.selectedBurstSet?.name) || 'Burst'
+      this.compositeFilename = `${sessionName}_${setName}_composite.jpg`
+    },
+    async loadBurstThumbnails() {
+      for (const f of this.burstSetFiles) {
+        if (this.burstThumbnails[f.id]) continue
+        const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 80, height: 54 })
+        this.burstThumbnails = { ...this.burstThumbnails, [f.id]: thumb }
+      }
+    },
+    toggleFrameSelected(fileId) {
+      if (this.selectedFrameIds.includes(fileId)) {
+        this.selectedFrameIds = this.selectedFrameIds.filter(id => id !== fileId)
+      } else {
+        this.selectedFrameIds = [...this.selectedFrameIds, fileId]
+      }
+    },
+    selectAllFrames() {
+      this.selectedFrameIds = this.burstSetFiles.map(f => f.id)
+    },
+    deselectAllFrames() {
+      this.selectedFrameIds = []
+    },
+    async pickCompositeOutputFolder() {
+      const folder = await window.api.invoke('dialog:openFolder')
+      if (folder) {
+        this.compositeOutputFolder = folder
+        await window.api.invoke('store:set', 'compositeOutputFolder', folder)
+      }
+    },
+    isCompositeStepDone(stepId) {
+      if (this.compositeResult?.success) return true
+      if (!this.compositeStep) return false
+      return COMPOSITE_STABILIZED_STEP_ORDER.indexOf(stepId) < COMPOSITE_STABILIZED_STEP_ORDER.indexOf(this.compositeStep)
+    },
+    async runCreateComposite() {
+      if (!this.canCreateComposite || this.compositing) return
+      this.compositing = true
+      this.compositeLog = []
+      this.compositeResult = null
+      this.compositeStep = this.compositeMode === 'stabilized' ? 'load' : null
+
+      const orderedFiles = this.burstSetFiles.filter(f => this.selectedFrameIds.includes(f.id))
+      const outputPath = `${this.compositeOutputFolder}/${this.compositeFilename}`
+
+      const result = await window.api.invoke('tools:createComposite', {
+        ffmpegPath: this.tools.ffmpeg,
+        huginPaths: {
+          hugin: this.tools.hugin,
+          nona: this.tools.huginCli?.nona,
+          enblend: this.tools.huginCli?.enblend,
+          autooptimiser: this.tools.huginCli?.autooptimiser,
+          cpfind: this.tools.huginCli?.cpfind
+        },
+        inputFiles: orderedFiles.map(f => f.full_path),
+        outputPath,
+        mode: this.compositeMode,
+        blendMode: this.blendMode,
+        quality: this.compositeQuality,
+        stripGap: this.stripGap,
+        stripBackground: this.stripBackground,
+        stripLabels: this.stripLabels,
+        stripLabelSize: this.stripLabelSize,
+        stripLabelColor: this.stripLabelColor,
+        featureSensitivity: this.featureSensitivity,
+        stabilizedBlend: this.stabilizedBlend,
+        preScale: this.preScale
+      })
+
+      this.compositing = false
+      this.compositeResult = result
+
+      if (result.success) {
+        this.compositeStep = 'save'
+        this.compositeThumbnail = await window.api.invoke('img:thumbnail', result.outputPath, { width: 200, height: 150 })
+        if (this.selectedBurstSet) {
+          await window.api.invoke('burst:updateSet', this.selectedBurstSet.id, { status: 'composited', composite_path: result.outputPath })
+        }
+      } else {
+        this.toast(`Composite failed: ${result.error}`, 'error')
+      }
+    },
+    async revealCompositeOutput() {
+      if (this.compositeResult?.outputPath) await window.api.invoke('tools:revealInFinder', this.compositeResult.outputPath)
+    },
+    async openCompositeInGallery() {
+      if (!this.compositeResult?.outputPath) return
+      if (!this.session?.id) {
+        this.$emit('navigate', 'gallery')
+        return
+      }
+      const meta = await window.api.invoke('img:getMetadata', this.compositeResult.outputPath)
+      const groupId = this.burstSetFiles[0]?.group_id || null
+      const res = await window.api.invoke('file:upsert', this.session.id, groupId, {
+        filename: this.compositeFilename,
+        full_path: this.compositeResult.outputPath,
         size_bytes: meta?.size || 0,
         exif_ts: Date.now()
       })
@@ -1426,5 +1910,81 @@ export default {
   color: #ef5350;
   padding-top: 6px;
   border-top: 1px solid var(--border);
+}
+
+/* ── Burst Composite ─────────────────────────── */
+.field-input-wide {
+  width: 320px;
+}
+
+.color-input {
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+
+.frame-select-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.frame-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.frame-select-links a {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.burst-frame-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.burst-frame-thumb {
+  width: 80px;
+  height: 54px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid var(--accent);
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.burst-frame-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.burst-frame-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--surface2);
+}
+
+.burst-frame-thumb.deselected {
+  opacity: 0.4;
+  border-color: transparent;
+}
+
+.composite-simple-progress {
+  font-size: 13px;
+  color: var(--text2);
 }
 </style>
