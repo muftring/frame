@@ -920,6 +920,20 @@ function burstListSets(sessionId) {
   }
 }
 
+// Member files for a burst set, in frame order — needed by the Sorter
+// burst compare view and the Gallery burst set detail view, neither of
+// which is covered by burstListSets (set-level metadata only).
+function burstListFiles(burstSetId) {
+  try {
+    const db = getDb()
+    return db.prepare(
+      'SELECT * FROM files WHERE burst_set_id = ? ORDER BY burst_frame_order ASC'
+    ).all(burstSetId)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function _refreshBurstFrameCount(db, burstSetId) {
   const count = db.prepare('SELECT COUNT(*) AS n FROM files WHERE burst_set_id = ?').get(burstSetId).n
   db.prepare('UPDATE burst_sets SET frame_count = ?, updated_at = ? WHERE id = ?').run(count, Date.now(), burstSetId)
@@ -1264,6 +1278,7 @@ module.exports = {
   burstUpdateSet,
   burstDeleteSet,
   burstListSets,
+  burstListFiles,
   burstAddFile,
   burstRemoveFile,
   burstReorderFrames,

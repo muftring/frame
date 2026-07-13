@@ -227,6 +227,7 @@ ipcMain.handle('burst:confirmSet', (_, sessionId, fileIds, name) => sessionStore
 ipcMain.handle('burst:updateSet', (_, burstSetId, fields) => sessionStore.burstUpdateSet(burstSetId, fields))
 ipcMain.handle('burst:deleteSet', (_, burstSetId) => sessionStore.burstDeleteSet(burstSetId))
 ipcMain.handle('burst:listSets', (_, sessionId) => sessionStore.burstListSets(sessionId))
+ipcMain.handle('burst:listFiles', (_, burstSetId) => sessionStore.burstListFiles(burstSetId))
 ipcMain.handle('burst:addFile', (_, burstSetId, fileId) => sessionStore.burstAddFile(burstSetId, fileId))
 ipcMain.handle('burst:removeFile', (_, burstSetId, fileId) => sessionStore.burstRemoveFile(burstSetId, fileId))
 ipcMain.handle('burst:reorderFrames', (_, burstSetId, orderedFileIds) => sessionStore.burstReorderFrames(burstSetId, orderedFileIds))

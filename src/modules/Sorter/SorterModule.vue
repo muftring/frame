@@ -38,7 +38,7 @@
           v-for="(img, i) in images"
           :key="img.path"
           class="film-thumb"
-          :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept', 'has-pano': img.panoSetId }"
+          :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept', 'has-pano': img.panoSetId && !img.burstSetId, 'has-burst': img.burstSetId }"
           @click="currentIndex = i"
         >
           <img v-if="img.thumbnail" :src="img.thumbnail" />
@@ -127,6 +127,22 @@
       <a class="pano-view-link" @click="viewPanoSet">View set →</a>
     </div>
 
+    <!-- Burst set info bar -->
+    <div v-if="currentImage && currentImage.burstSetId" class="burst-info-bar">
+      <template v-if="currentBurstStatus === 'reviewed'">
+        <span class="burst-info-text">
+          ⚡ {{ currentImage.burstSetName || 'Burst' }}  ·  Keeper selected ✓
+        </span>
+        <a class="burst-view-link" @click="viewBurstSet">View burst →</a>
+      </template>
+      <template v-else>
+        <span class="burst-info-text">
+          ⚡ {{ currentImage.burstSetName || 'Burst' }}  ·  Frame {{ burstFrameNumber }} of {{ burstFrameTotal }}
+        </span>
+        <a class="burst-view-link" @click="openBurstCompare">Compare burst →</a>
+      </template>
+    </div>
+
     <!-- Action bar -->
     <div class="action-bar" v-if="images.length">
       <button class="btn action-btn" @click="prev" :disabled="currentIndex === 0">Prev</button>
@@ -180,15 +196,27 @@
         </div>
       </div>
     </div>
+
+    <!-- Burst compare overlay -->
+    <BurstCompareView
+      v-if="showBurstCompare"
+      :burst-set-id="activeBurstSetId"
+      :session-id="session.id"
+      @close="closeBurstCompare"
+      @kept="handleBurstKept"
+    />
   </div>
 </template>
 
 <script>
+import BurstCompareView from './BurstCompareView.vue'
+
 const TAG_BADGE_ORDER = ['bw-candidate', 'pano-candidate', 'burst-candidate']
 const TAG_BADGE_ABBREV = { 'bw-candidate': 'B&W', 'pano-candidate': 'PANO', 'burst-candidate': 'BRST' }
 
 export default {
   name: 'SorterModule',
+  components: { BurstCompareView },
   inject: ['toast', 'session', 'updatePipeline'],
   props: {
     initialFolder: { type: String, default: null }
@@ -207,7 +235,10 @@ export default {
       showResumePrompt: false,
       resumeFileId: null,
       tagDefinitions: [],
-      bwPreviewActive: false
+      bwPreviewActive: false,
+      burstSetStatuses: {},
+      showBurstCompare: false,
+      activeBurstSetId: null
     }
   },
   computed: {
@@ -264,6 +295,17 @@ export default {
     panoFrameTotal() {
       if (!this.currentImage?.panoSetId) return 0
       return this.images.filter(i => i.panoSetId === this.currentImage.panoSetId).length
+    },
+    burstFrameNumber() {
+      return (this.currentImage?.burstFrameOrder ?? 0) + 1
+    },
+    burstFrameTotal() {
+      if (!this.currentImage?.burstSetId) return 0
+      return this.images.filter(i => i.burstSetId === this.currentImage.burstSetId).length
+    },
+    currentBurstStatus() {
+      if (!this.currentImage?.burstSetId) return null
+      return this.burstSetStatuses[this.currentImage.burstSetId] || 'pending'
     }
   },
   watch: {
@@ -293,9 +335,18 @@ export default {
     clearTimeout(this._lastFileTimer)
   },
   methods: {
+    async loadBurstSetStatuses() {
+      if (!this.session?.id) return
+      const sets = await window.api.invoke('burst:listSets', this.session.id)
+      if (!Array.isArray(sets)) return
+      const map = {}
+      for (const s of sets) map[s.id] = s.status
+      this.burstSetStatuses = map
+    },
     async loadSessionFiles() {
       this.loading = true
       this.images = []
+      await this.loadBurstSetStatuses()
       const groups = await window.api.invoke('group:list', this.session.id)
       if (!Array.isArray(groups)) { this.loading = false; return }
 
@@ -497,7 +548,7 @@ export default {
       if (this.currentIndex < this.images.length - 1) this.currentIndex++
     },
     handleKeydown(e) {
-      if (this.confirmEmptyTrash || this.showCleanupModal) return
+      if (this.confirmEmptyTrash || this.showCleanupModal || this.showBurstCompare) return
       switch (e.key) {
         case 'ArrowLeft': this.prev(); e.preventDefault(); break
         case 'ArrowRight': this.next(); e.preventDefault(); break
@@ -506,6 +557,9 @@ export default {
         case 'Escape': this.trashPanelOpen = false; break
         case 'p': case 'P':
           if (!this.tagShortcutsSuppressed(e)) this.toggleBwPreview()
+          break
+        case 'c': case 'C':
+          if (!this.tagShortcutsSuppressed(e) && this.currentImage?.burstSetId) this.openBurstCompare()
           break
         default: {
           const tagDef = this.tagShortcutMap[e.key.toLowerCase()]
@@ -549,6 +603,31 @@ export default {
     viewPanoSet() {
       if (!this.currentImage?.panoSetId) return
       this.$emit('navigate', 'gallery', { type: 'pano-set', panoSetId: this.currentImage.panoSetId })
+    },
+    viewBurstSet() {
+      if (!this.currentImage?.burstSetId) return
+      this.$emit('navigate', 'gallery', { type: 'burst-set', burstSetId: this.currentImage.burstSetId })
+    },
+    openBurstCompare() {
+      if (!this.currentImage?.burstSetId) return
+      this.activeBurstSetId = this.currentImage.burstSetId
+      this.showBurstCompare = true
+    },
+    closeBurstCompare() {
+      this.showBurstCompare = false
+      this.activeBurstSetId = null
+    },
+    async handleBurstKept({ burstSetId, keeperFileId, keeperFilename, otherCount }) {
+      this.showBurstCompare = false
+      this.activeBurstSetId = null
+      this.burstSetStatuses = { ...this.burstSetStatuses, [burstSetId]: 'reviewed' }
+      for (const img of this.images) {
+        if (img.burstSetId !== burstSetId) continue
+        img.status = img.fileId === keeperFileId ? 'kept' : 'trashed'
+      }
+      this.toast(`Kept ${keeperFilename}, deleted ${otherCount} other frame${otherCount !== 1 ? 's' : ''}`, 'success')
+      const nextIdx = this.images.findIndex((img, i) => i > this.currentIndex && img.burstSetId !== burstSetId)
+      if (nextIdx !== -1) this.currentIndex = nextIdx
     },
     handleImageError(e) {
       if (this.currentImage && this.currentImage.thumbnail) {
@@ -723,6 +802,11 @@ export default {
   outline-offset: -1.5px;
 }
 
+.film-thumb.has-burst {
+  outline: 1.5px solid #e8943a;
+  outline-offset: -1.5px;
+}
+
 .thumb-placeholder {
   width: 100%;
   height: 68px;
@@ -880,6 +964,29 @@ export default {
 }
 .pano-view-link:hover {
   color: #3a7ab8;
+}
+
+/* Burst set info bar */
+.burst-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: rgba(232, 148, 58, 0.12);
+  border-top: 1px solid rgba(232, 148, 58, 0.3);
+  color: #e8943a;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.burst-view-link {
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+  color: #e8943a;
+}
+.burst-view-link:hover {
+  color: #c67826;
 }
 
 /* Action bar */
