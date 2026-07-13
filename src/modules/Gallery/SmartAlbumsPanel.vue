@@ -146,6 +146,65 @@
       <div v-if="!activeSession" class="sidebar-empty">Start a session to create panorama sets</div>
     </div>
 
+    <!-- BURST SETS -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-header">
+        <span class="sidebar-section-label">BURST SETS</span>
+        <div class="header-btn-group">
+          <button
+            class="add-icon-btn"
+            :disabled="!activeSession"
+            :title="activeSession ? 'Detect panorama and burst sequences' : 'Start a session to detect sequences'"
+            @click="detectionModalOpen = true"
+          >⟳</button>
+          <button
+            class="add-icon-btn"
+            :disabled="!activeSession"
+            :title="activeSession ? 'Create burst set manually' : 'Start a session to create a set'"
+            @click="manualBurstCreateOpen = true"
+          >+</button>
+        </div>
+      </div>
+
+      <div
+        v-if="burstCandidatesAlbum"
+        class="album-row"
+        :class="{ active: isSourceActive({ type: 'album', albumId: burstCandidatesAlbum.id }) }"
+        @click="$emit('select', { type: 'album', albumId: burstCandidatesAlbum.id }, 'All Burst Candidates')"
+      >
+        <span class="album-row-icon burst-icon">⚡</span>
+        <span class="album-row-name">All Burst Candidates</span>
+        <span class="album-row-count">{{ burstCandidatesAlbum.fileCount }}</span>
+      </div>
+
+      <div
+        v-if="activeSession && sessionBurstCandidateCount > 0"
+        class="album-row"
+        :class="{ active: isSourceActive({ type: 'session-tag', sessionId: activeSession.id, tagName: 'burst-candidate' }) }"
+        @click="$emit('select', { type: 'session-tag', sessionId: activeSession.id, tagName: 'burst-candidate' }, 'Bursts — ' + activeSession.name)"
+      >
+        <span class="album-row-icon burst-icon">⚡</span>
+        <span class="album-row-name" :title="'Bursts — ' + activeSession.name">Bursts — {{ activeSession.name }}</span>
+        <span class="album-row-count">{{ sessionBurstCandidateCount }}</span>
+      </div>
+
+      <div
+        v-for="set in burstSets"
+        :key="'bs' + set.id"
+        class="album-row pano-set-row"
+        :class="{ active: selectedBurstSetId === set.id }"
+        @click="$emit('select-burst-set', set.id)"
+      >
+        <span class="album-row-icon burst-icon">⚡</span>
+        <span class="album-row-name" :title="set.name">{{ set.name }}</span>
+        <span class="pano-set-count">{{ set.frame_count }}</span>
+        <span class="status-pill" :class="'status-' + set.status">{{ burstStatusLabel(set.status) }}</span>
+      </div>
+
+      <div v-if="activeSession && !burstSets.length" class="sidebar-empty">No burst sets yet</div>
+      <div v-if="!activeSession" class="sidebar-empty">Start a session to create burst sets</div>
+    </div>
+
     <!-- Footer -->
     <div class="sidebar-footer">
       <button class="new-album-btn" @click="openEditor(null)">+ New Smart Album</button>
@@ -181,6 +240,14 @@
       @close="manualCreateOpen = false"
       @created="handlePanoSetCreated"
     />
+
+    <!-- Manual burst set creation modal -->
+    <ManualBurstSetModal
+      v-if="manualBurstCreateOpen"
+      :active-session="activeSession"
+      @close="manualBurstCreateOpen = false"
+      @created="handleBurstSetCreated"
+    />
   </div>
 </template>
 
@@ -188,6 +255,7 @@
 import SmartAlbumEditor from './SmartAlbumEditor.vue'
 import SequenceDetectionModal from './SequenceDetectionModal.vue'
 import ManualPanoSetModal from './ManualPanoSetModal.vue'
+import ManualBurstSetModal from './ManualBurstSetModal.vue'
 
 const SESSION_FILTERS = [
   { status: 'kept',       label: 'Kept' },
@@ -197,13 +265,14 @@ const SESSION_FILTERS = [
 
 export default {
   name: 'SmartAlbumsPanel',
-  components: { SmartAlbumEditor, SequenceDetectionModal, ManualPanoSetModal },
+  components: { SmartAlbumEditor, SequenceDetectionModal, ManualPanoSetModal, ManualBurstSetModal },
   props: {
-    activeSession:     { type: Object, default: null },
-    selectedSource:    { type: Object, default: null },
-    selectedPanoSetId: { type: Number, default: null }
+    activeSession:      { type: Object, default: null },
+    selectedSource:     { type: Object, default: null },
+    selectedPanoSetId:  { type: Number, default: null },
+    selectedBurstSetId: { type: Number, default: null }
   },
-  emits: ['select', 'select-pano-set', 'sequences-confirmed'],
+  emits: ['select', 'select-pano-set', 'select-burst-set', 'sequences-confirmed'],
   data() {
     return {
       SESSION_FILTERS,
@@ -211,17 +280,23 @@ export default {
       sessionGroups: [],
       sessionBwCount: 0,
       sessionPanoCandidateCount: 0,
+      sessionBurstCandidateCount: 0,
       panoSets: [],
+      burstSets: [],
       editorVisible: false,
       editingAlbum: null,
       ctxMenu: null,
       detectionModalOpen: false,
-      manualCreateOpen: false
+      manualCreateOpen: false,
+      manualBurstCreateOpen: false
     }
   },
   computed: {
     panoCandidatesAlbum() {
       return this.globalAlbums.find(a => a.name === 'Panorama Candidates') || null
+    },
+    burstCandidatesAlbum() {
+      return this.globalAlbums.find(a => a.name === 'Burst Candidates') || null
     }
   },
   watch: {
@@ -235,12 +310,17 @@ export default {
           this.sessionBwCount = Array.isArray(bwFiles) ? bwFiles.length : 0
           const panoFiles = await window.api.invoke('tag:listByTag', 'pano-candidate', session.id)
           this.sessionPanoCandidateCount = Array.isArray(panoFiles) ? panoFiles.length : 0
+          const burstFiles = await window.api.invoke('tag:listByTag', 'burst-candidate', session.id)
+          this.sessionBurstCandidateCount = Array.isArray(burstFiles) ? burstFiles.length : 0
           await this.loadPanoSets()
+          await this.loadBurstSets()
         } else {
           this.sessionGroups = []
           this.sessionBwCount = 0
           this.sessionPanoCandidateCount = 0
+          this.sessionBurstCandidateCount = 0
           this.panoSets = []
+          this.burstSets = []
         }
       }
     }
@@ -258,15 +338,26 @@ export default {
       const sets = await window.api.invoke('pano:listSets', this.activeSession.id)
       this.panoSets = Array.isArray(sets) ? sets : []
     },
+    async loadBurstSets() {
+      if (!this.activeSession) { this.burstSets = []; return }
+      const sets = await window.api.invoke('burst:listSets', this.activeSession.id)
+      this.burstSets = Array.isArray(sets) ? sets : []
+    },
     statusLabel(status) {
       return { pending: 'Pending', confirmed: 'Confirmed', stitched: 'Stitched', archived: 'Archived' }[status] || status
+    },
+    burstStatusLabel(status) {
+      return { pending: 'Pending', reviewed: 'Reviewed ✓', composited: 'Composited', archived: 'Archived' }[status] || status
     },
     async handleSequencesConfirmed(payload) {
       this.detectionModalOpen = false
       await this.loadPanoSets()
+      await this.loadBurstSets()
       if (this.activeSession) {
         const panoFiles = await window.api.invoke('tag:listByTag', 'pano-candidate', this.activeSession.id)
         this.sessionPanoCandidateCount = Array.isArray(panoFiles) ? panoFiles.length : 0
+        const burstFiles = await window.api.invoke('tag:listByTag', 'burst-candidate', this.activeSession.id)
+        this.sessionBurstCandidateCount = Array.isArray(burstFiles) ? burstFiles.length : 0
       }
       await this.loadAlbums()
       this.$emit('sequences-confirmed', payload)
@@ -274,6 +365,10 @@ export default {
     async handlePanoSetCreated() {
       this.manualCreateOpen = false
       await this.loadPanoSets()
+    },
+    async handleBurstSetCreated() {
+      this.manualBurstCreateOpen = false
+      await this.loadBurstSets()
     },
     selectAlbum(album) {
       this.$emit('select', { type: 'album', albumId: album.id }, album.name)
@@ -416,6 +511,13 @@ export default {
   opacity: 1;
 }
 
+.burst-icon {
+  color: #e8943a;
+  opacity: 1;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
 .pano-set-row {
   gap: 6px;
 }
@@ -436,10 +538,12 @@ export default {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.status-pending   { background: var(--surface2); color: var(--text2); }
-.status-confirmed { background: rgba(74, 144, 217, 0.15); color: #4a90d9; }
-.status-stitched  { background: rgba(102, 187, 106, 0.15); color: #66bb6a; }
-.status-archived  { background: var(--surface2); color: var(--text2); opacity: 0.6; }
+.status-pending    { background: var(--surface2); color: var(--text2); }
+.status-confirmed  { background: rgba(74, 144, 217, 0.15); color: #4a90d9; }
+.status-stitched   { background: rgba(102, 187, 106, 0.15); color: #66bb6a; }
+.status-reviewed   { background: rgba(102, 187, 106, 0.15); color: #66bb6a; }
+.status-composited { background: rgba(171, 122, 220, 0.15); color: #ab7adc; }
+.status-archived   { background: var(--surface2); color: var(--text2); opacity: 0.6; }
 
 .album-row-name {
   flex: 1;

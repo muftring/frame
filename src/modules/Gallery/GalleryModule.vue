@@ -17,8 +17,10 @@
         :active-session="activeSession"
         :selected-source="selectedSource"
         :selected-pano-set-id="selectedPanoSetId"
+        :selected-burst-set-id="selectedBurstSetId"
         @select="handleSourceSelect"
         @select-pano-set="handleSelectPanoSet"
+        @select-burst-set="handleSelectBurstSet"
         @sequences-confirmed="handleSequencesConfirmed"
       />
 
@@ -29,6 +31,15 @@
         @close="selectedPanoSetId = null"
         @set-changed="handlePanoSetChanged"
         @open-in-hugin="handleOpenInHugin"
+      />
+
+      <BurstSetView
+        v-else-if="selectedBurstSetId"
+        :burst-set-id="selectedBurstSetId"
+        :active-session="activeSession"
+        @close="selectedBurstSetId = null"
+        @set-changed="handleBurstSetChanged"
+        @create-composite="handleCreateComposite"
       />
 
       <div class="gallery-main" v-else>
@@ -114,11 +125,12 @@
 import ImageViewer from './ImageViewer.vue'
 import SmartAlbumsPanel from './SmartAlbumsPanel.vue'
 import PanoSetView from './PanoSetView.vue'
+import BurstSetView from './BurstSetView.vue'
 
 export default {
   name: 'GalleryModule',
   inject: ['toast', 'session'],
-  components: { ImageViewer, SmartAlbumsPanel, PanoSetView },
+  components: { ImageViewer, SmartAlbumsPanel, PanoSetView, BurstSetView },
   props: {
     sessionState:  { type: Object, default: null },
     activeSession: { type: Object, default: null },
@@ -140,7 +152,8 @@ export default {
       selectedSource: null,
       selectedSourceLabel: null,
       tagDefinitions: [],
-      selectedPanoSetId: null
+      selectedPanoSetId: null,
+      selectedBurstSetId: null
     }
   },
   computed: {
@@ -177,6 +190,11 @@ export default {
       return
     }
 
+    if (this.initialSource?.type === 'burst-set') {
+      this.selectedBurstSetId = this.initialSource.burstSetId
+      return
+    }
+
     if (this.initialSource) {
       const labelMap = { kept: 'Kept', deleted: 'Deleted', unreviewed: 'Unreviewed' }
       const label = labelMap[this.initialSource.status] || null
@@ -202,6 +220,7 @@ export default {
   methods: {
     async handleSourceSelect(source, label) {
       this.selectedPanoSetId = null
+      this.selectedBurstSetId = null
       this.selectedSource = source
       this.selectedSourceLabel = label || null
 
@@ -261,6 +280,7 @@ export default {
       const folder = await window.api.invoke('dialog:openFolder')
       if (folder) {
         this.selectedPanoSetId = null
+        this.selectedBurstSetId = null
         this.selectedSource = null
         this.selectedSourceLabel = null
         window.api.invoke('store:set', 'galleryLastSource', null)
@@ -345,6 +365,7 @@ export default {
       this.selectedSource = null
       this.selectedSourceLabel = null
       this.folderPath = null
+      this.selectedBurstSetId = null
       this.selectedPanoSetId = panoSetId
     },
     handlePanoSetChanged() {
@@ -353,11 +374,25 @@ export default {
       // an explicit nudge or it goes stale until activeSession changes.
       this.$refs.albumsPanel?.loadPanoSets()
     },
+    handleSelectBurstSet(burstSetId) {
+      this.selectedSource = null
+      this.selectedSourceLabel = null
+      this.folderPath = null
+      this.selectedPanoSetId = null
+      this.selectedBurstSetId = burstSetId
+    },
+    handleBurstSetChanged() {
+      this.$refs.albumsPanel?.loadBurstSets()
+    },
     handleSequencesConfirmed({ panoCount, burstCount }) {
       this.toast(`Created ${panoCount} panorama set${panoCount === 1 ? '' : 's'}, ${burstCount} burst set${burstCount === 1 ? '' : 's'}`, 'success')
     },
     handleOpenInHugin(panoSetId) {
       this.session.pendingPanoSetId = panoSetId
+      this.$emit('navigate', 'process')
+    },
+    handleCreateComposite(burstSetId) {
+      this.session.pendingBurstSetId = burstSetId
       this.$emit('navigate', 'process')
     },
 

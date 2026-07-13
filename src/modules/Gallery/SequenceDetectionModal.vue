@@ -194,10 +194,30 @@
             </div>
           </template>
 
-          <!-- Bursts tab (full card UI covered in Phase 13) -->
+          <!-- Bursts tab -->
           <template v-if="activeTab === 'bursts'">
-            <div class="results-empty">
-              {{ result.bursts.length }} burst sequence{{ result.bursts.length === 1 ? '' : 's' }} detected. Burst review and confirmation is coming in a future update.
+            <div v-if="!burstCards.length" class="results-empty">No new burst sequences detected.</div>
+            <div v-for="(b, i) in burstCards" :key="'burst' + i" class="result-card">
+              <div class="result-card-top">
+                <input type="checkbox" v-model="burstSelections[i].checked" />
+                <input type="text" class="result-name-input" v-model="burstSelections[i].name" />
+                <span class="confidence-badge" :class="'bconf-' + b.confidence.level">{{ burstConfidenceLabel(b.confidence.level) }}</span>
+              </div>
+              <div class="result-thumb-strip">
+                <template v-for="f in b.files" :key="f.id">
+                  <img v-if="burstThumbs[f.id]" :src="burstThumbs[f.id]" class="result-thumb" />
+                </template>
+              </div>
+              <div class="result-metrics">
+                {{ b.metrics.frameCount }} frames  ·  median {{ b.metrics.medianGapSeconds.toFixed(1) }}s between frames{{ b.metrics.medianShutter != null ? '  ·  1/' + b.metrics.medianShutter + 's typical' : '' }}
+              </div>
+              <div class="result-flags" v-if="b.confidence.flags.length">
+                <span v-for="(flag, fi) in b.confidence.flags" :key="fi" class="flag-pill" :class="'flag-' + flag.level">{{ flag.msg }}</span>
+              </div>
+            </div>
+
+            <div v-if="result.summary.skippedExisting > 0" class="skipped-note">
+              {{ result.summary.skippedExisting }} existing sets were skipped
             </div>
           </template>
 
@@ -307,8 +327,10 @@ export default {
       result: null,
       activeTab: 'panoramas',
       panoSelections: [],
+      burstSelections: [],
       ambiguousSelections: [],
       panoThumbs: {},
+      burstThumbs: {},
       ambiguousThumbs: {},
       confirming: false
     }
@@ -318,6 +340,10 @@ export default {
       if (!this.result) return []
       return this.result.panoramas.filter(p => !p.alreadyExists)
     },
+    burstCards() {
+      if (!this.result) return []
+      return this.result.bursts.filter(b => !b.alreadyExists)
+    },
     ambiguousCards() {
       if (!this.result) return []
       return this.result.ambiguous.filter(a => !a.alreadyExists)
@@ -326,6 +352,7 @@ export default {
   watch: {
     activeTab(tab) {
       if (tab === 'panoramas') this.loadPanoThumbs()
+      if (tab === 'bursts') this.loadBurstThumbs()
       if (tab === 'ambiguous') this.loadAmbiguousThumbs()
     }
   },
@@ -349,6 +376,9 @@ export default {
     confidenceLabel(level) {
       return { high: 'High confidence', medium: 'Review recommended', low: 'Likely not panorama' }[level] || level
     },
+    burstConfidenceLabel(level) {
+      return { high: 'High confidence burst', medium: 'Possible burst', low: 'Low confidence' }[level] || level
+    },
     async runDetection() {
       if (!this.activeSession) return
       const effectiveOptions = {
@@ -364,6 +394,10 @@ export default {
       this.panoSelections = (result.panoramas || [])
         .filter(p => !p.alreadyExists)
         .map(p => ({ checked: p.defaultChecked, name: p.suggestedName }))
+
+      this.burstSelections = (result.bursts || [])
+        .filter(b => !b.alreadyExists)
+        .map(b => ({ checked: b.defaultChecked, name: b.suggestedName }))
 
       this.ambiguousSelections = (result.ambiguous || [])
         .filter(a => !a.alreadyExists)
@@ -383,6 +417,15 @@ export default {
           if (this.panoThumbs[f.id]) continue
           const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 80, height: 54 })
           this.panoThumbs = { ...this.panoThumbs, [f.id]: thumb }
+        }
+      }
+    },
+    async loadBurstThumbs() {
+      for (const b of this.burstCards) {
+        for (const f of b.files) {
+          if (this.burstThumbs[f.id]) continue
+          const thumb = await window.api.invoke('img:thumbnail', f.full_path, { width: 80, height: 54 })
+          this.burstThumbs = { ...this.burstThumbs, [f.id]: thumb }
         }
       }
     },
@@ -407,6 +450,14 @@ export default {
           const fileIds = this.panoCards[i].files.map(f => f.id)
           await window.api.invoke('pano:confirmSet', this.activeSession.id, fileIds, sel.name.trim() || this.panoCards[i].suggestedName)
           panoCount++
+        }
+
+        for (let i = 0; i < this.burstCards.length; i++) {
+          const sel = this.burstSelections[i]
+          if (!sel.checked) continue
+          const fileIds = this.burstCards[i].files.map(f => f.id)
+          await window.api.invoke('burst:confirmSet', this.activeSession.id, fileIds, sel.name.trim() || this.burstCards[i].suggestedName)
+          burstCount++
         }
 
         for (let i = 0; i < this.ambiguousCards.length; i++) {
@@ -759,6 +810,9 @@ export default {
 .conf-high   { background: rgba(102, 187, 106, 0.15); color: #66bb6a; }
 .conf-medium { background: rgba(230, 168, 63, 0.15); color: #e6a83f; }
 .conf-low    { background: rgba(239, 83, 80, 0.15); color: #ef5350; }
+.bconf-high   { background: rgba(232, 148, 58, 0.15); color: #e8943a; }
+.bconf-medium { background: rgba(230, 168, 63, 0.15); color: #e6a83f; }
+.bconf-low    { background: var(--surface); color: var(--text2); }
 .conf-pano-score  { background: rgba(74, 144, 217, 0.15); color: #4a90d9; }
 .conf-burst-score { background: rgba(232, 148, 58, 0.15); color: #e8943a; }
 
