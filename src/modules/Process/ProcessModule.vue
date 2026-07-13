@@ -924,6 +924,14 @@ export default {
     }
 
     this.compositeOutputFolder = await window.api.invoke('store:get', 'compositeOutputFolder') || null
+
+    const seqDefaults = await window.api.invoke('store:get', 'sequenceDetectionOptions')
+    if (seqDefaults && typeof seqDefaults === 'object') {
+      if (seqDefaults.defaultCompositeMode) this.compositeMode = seqDefaults.defaultCompositeMode
+      if (seqDefaults.defaultBlendMode) this.blendMode = seqDefaults.defaultBlendMode
+      if (seqDefaults.defaultCompositeQuality) this.compositeQuality = seqDefaults.defaultCompositeQuality
+    }
+
     if (this.session?.id) {
       const sets = await window.api.invoke('burst:listSets', this.session.id)
       this.reviewedBurstSets = Array.isArray(sets) ? sets.filter(s => s.status === 'reviewed' || s.status === 'pending') : []

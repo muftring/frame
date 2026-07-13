@@ -192,7 +192,9 @@ export default {
         theme: 'dark',
         archivaultCliPath: null,
         archivaultTag: '',
-        archivaultUploadedBy: ''
+        archivaultUploadedBy: '',
+        ffmpegPath: null,
+        huginPath: null
       },
       navItems: [
         { id: 'home',    label: 'Home',    icon: 'home' },

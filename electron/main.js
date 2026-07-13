@@ -37,7 +37,12 @@ ipcMain.handle('img:flip', (_, filePath, direction, outputPath) => imageProcesso
 ipcMain.handle('img:getFullMetadata', (_, filePath) => imageProcessor.getFullMetadata(filePath))
 ipcMain.handle('img:getMetadataBatch', (_, filePaths) => imageProcessor.getMetadataBatch(filePaths))
 
-ipcMain.handle('tools:findInstalled', () => toolLauncher.findInstalled())
+ipcMain.handle('tools:findInstalled', async () => {
+  const store = await getStore()
+  const frameSettings = store.get('frameSettings') || {}
+  return toolLauncher.findInstalled({ ffmpegPath: frameSettings.ffmpegPath, huginPath: frameSettings.huginPath })
+})
+ipcMain.handle('tools:findStandardPaths', () => toolLauncher.findStandardPaths())
 ipcMain.handle('tools:openFile', (_, toolPath, filePath) => toolLauncher.openFile(toolPath, filePath))
 ipcMain.handle('tools:openFolder', (_, toolPath, folderPath) => toolLauncher.openFolder(toolPath, folderPath))
 ipcMain.handle('tools:openFiles', (_, toolPath, filePaths, styleName) => toolLauncher.openFiles(toolPath, filePaths, styleName))

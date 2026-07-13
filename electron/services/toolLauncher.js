@@ -93,19 +93,36 @@ async function findHuginCli(huginPath) {
   return result
 }
 
-async function findInstalled() {
+// overrides come from the user's Settings > Tool Paths fields; a
+// user-set path wins over the standard-location search, but only if it
+// actually exists on disk (a stale/typo'd override silently falls back
+// rather than reporting a tool as "found" at a path that isn't there).
+async function findInstalled(overrides = {}) {
   const platform = process.platform
   const paths = TOOL_PATHS[platform] || {}
 
-  const hugin = paths.hugin ? await findFirstPath(paths.hugin) : null
+  const hugin = (overrides.huginPath && await fileExists(overrides.huginPath))
+    ? overrides.huginPath
+    : (paths.hugin ? await findFirstPath(paths.hugin) : null)
+
+  const ffmpeg = (overrides.ffmpegPath && await fileExists(overrides.ffmpegPath))
+    ? overrides.ffmpegPath
+    : (paths.ffmpeg ? await findFirstPath(paths.ffmpeg) : null)
 
   return {
     darktable: paths.darktable ? await findFirstPath(paths.darktable) : null,
     rawtherapee: paths.rawtherapee ? await findFirstPath(paths.rawtherapee) : null,
     hugin,
     huginCli: await findHuginCli(hugin),
-    ffmpeg: paths.ffmpeg ? await findFirstPath(paths.ffmpeg) : null
+    ffmpeg
   }
+}
+
+// Standard-location-only detection, ignoring any user override — used by
+// the Settings panel to show "Auto-detected: ..." hint text regardless of
+// what the user has (or hasn't) typed into the override field.
+function findStandardPaths() {
+  return findInstalled({})
 }
 
 function checkFfmpegVersion(ffmpegPath) {
@@ -598,6 +615,7 @@ function runBatchExport(toolPath, inputPaths, outputFolder, presetPath, sender) 
 
 module.exports = {
   findInstalled,
+  findStandardPaths,
   checkFfmpegVersion,
   openFile,
   openFolder,
