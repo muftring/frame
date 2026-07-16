@@ -463,7 +463,7 @@ export default {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(201, 168, 76, 0.12);
+  background: var(--color-accent-dim);
   border: 1px solid rgba(201, 168, 76, 0.28);
   border-radius: 4px;
   padding: 2px 8px;

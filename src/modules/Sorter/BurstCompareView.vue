@@ -306,6 +306,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .burst-compare-overlay {
   position: fixed;
   inset: 0;

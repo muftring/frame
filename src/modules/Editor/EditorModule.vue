@@ -496,6 +496,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .editor {
   display: flex;
   flex-direction: column;

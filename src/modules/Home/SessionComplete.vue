@@ -190,6 +190,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .sc-overlay {
   position: fixed;
   inset: 0;

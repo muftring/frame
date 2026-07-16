@@ -415,6 +415,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .albums-sidebar {
   width: 200px;
   flex-shrink: 0;
