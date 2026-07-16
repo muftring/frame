@@ -294,6 +294,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .burst-set-view {
   flex: 1;
   display: flex;

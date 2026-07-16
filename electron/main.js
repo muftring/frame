@@ -15,6 +15,9 @@ app.setName('Frame')
 
 let mainWindow = null
 let tray = null
+let splash = null
+const MIN_SPLASH_MS = 1400
+const MAX_SPLASH_MS = 4000
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-file', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
@@ -279,7 +282,12 @@ ipcMain.handle('store:set', async (_, key, value) => {
   }
 })
 
-async function createWindow() {
+// startHidden gates initial visibility on 'ready-to-show' (first paint) so
+// the splash sequence in app.whenReady() can reveal the window itself once
+// it's actually ready, avoiding a white-flash. Callers that don't care
+// about that (the 'activate' handler, the tray menu's "Show Frame"
+// fallback) get the previous immediate-show behavior unchanged.
+async function createWindow({ startHidden = false } = {}) {
   let bounds = null
   try {
     const store = await getStore()
@@ -292,6 +300,7 @@ async function createWindow() {
     x: bounds?.x,
     y: bounds?.y,
     title: 'Frame',
+    show: !startHidden,
     backgroundColor: '#1a1a1a',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     webPreferences: {
@@ -300,6 +309,10 @@ async function createWindow() {
       nodeIntegration: false
     }
   })
+
+  const readyToShow = startHidden
+    ? new Promise(resolve => win.once('ready-to-show', resolve))
+    : Promise.resolve()
 
   let boundsTimer
   const saveBounds = () => {
@@ -324,6 +337,39 @@ async function createWindow() {
   }
 
   mainWindow = win
+  await readyToShow
+  return win
+}
+
+async function createSplash() {
+  splash = new BrowserWindow({
+    width: 420,
+    height: 280,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    center: true,
+    show: false,
+    backgroundColor: '#1a1a1a',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  })
+  splash.loadFile(path.join(__dirname, 'splash.html'))
+  return new Promise(resolve => {
+    splash.once('ready-to-show', () => {
+      splash.show()
+      splash.webContents.executeJavaScript(`setVersion('v${app.getVersion()}')`).catch(() => {})
+      resolve()
+    })
+  })
+}
+
+async function setSplashProgress(pct) {
+  if (splash && !splash.isDestroyed()) {
+    await splash.webContents.executeJavaScript(`setProgress(${pct})`).catch(() => {})
+  }
 }
 
 function showMainWindow() {
@@ -420,13 +466,23 @@ function buildTray() {
 }
 
 app.whenReady().then(async () => {
+  const splashStart = Date.now()
+
+  // Safety net: if any startup step below hangs, show the main window
+  // anyway rather than leaving the user stuck at the splash forever.
+  const maxSplashTimer = setTimeout(() => {
+    if (splash && !splash.isDestroyed()) splash.destroy()
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show()
+  }, MAX_SPLASH_MS)
+
   protocol.handle('local-file', (request) => {
     const raw = request.url.slice('local-file://'.length)
     const filePath = decodeURI(raw.split('?')[0])
     return net.fetch(url.pathToFileURL(filePath).href)
   })
-  await imageProcessor.ensureCacheDir()
-  await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
+
+  await createSplash()
+  await setSplashProgress(15)
 
   if (isDev && process.platform === 'darwin') {
     app.dock.setIcon(path.join(__dirname, 'assets', 'appIcon.png'))
@@ -435,7 +491,31 @@ app.whenReady().then(async () => {
   setupAboutPanel()
   buildMenu()
   buildTray()
-  await createWindow()
+
+  const win = await createWindow({ startHidden: true })
+  await setSplashProgress(40)
+
+  await imageProcessor.ensureCacheDir()
+  await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
+  await setSplashProgress(65)
+
+  // Renderer + preload are already loaded by the time createWindow()'s
+  // ready-to-show promise resolved above, so there's no separate cache
+  // "warm up" step to await here — just keep the splash cadence even.
+  await setSplashProgress(85)
+  await setSplashProgress(100)
+
+  const elapsed = Date.now() - splashStart
+  if (elapsed < MIN_SPLASH_MS) {
+    await new Promise(r => setTimeout(r, MIN_SPLASH_MS - elapsed))
+  }
+
+  clearTimeout(maxSplashTimer)
+  if (splash && !splash.isDestroyed()) {
+    splash.destroy()
+    splash = null
+  }
+  win.show()
 })
 
 app.on('window-all-closed', () => {

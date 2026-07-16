@@ -351,6 +351,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .triage {
   padding: 32px;
   max-width: 900px;

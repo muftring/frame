@@ -3,59 +3,24 @@
     <nav class="sidebar" @mouseenter="sidebarOpen = true" @mouseleave="sidebarOpen = false">
       <div class="drag-region"></div>
       <div class="nav-items">
-        <div
+        <NavIcon
           v-for="item in navItems"
           :key="item.id"
-          class="nav-item"
-          :class="{ active: currentModule === item.id }"
+          :icon="item.icon"
+          :label="item.label"
+          :active="currentModule === item.id"
+          :collapsed="!sidebarOpen"
           @click="selectModule(item.id)"
-        >
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <template v-if="item.icon === 'home'">
-              <path d="M3 12l9-9 9 9M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9" />
-            </template>
-            <template v-if="item.icon === 'triage'">
-              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              <path d="M12 11l3 3m0 0l-3 3m3-3H9" />
-            </template>
-            <template v-if="item.icon === 'sorter'">
-              <path d="M4 8h16M4 16h16" />
-              <circle cx="9" cy="8" r="2" fill="currentColor" />
-              <circle cx="15" cy="16" r="2" fill="currentColor" />
-            </template>
-            <template v-if="item.icon === 'gallery'">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </template>
-            <template v-if="item.icon === 'editor'">
-              <path d="M6 2v4M18 18v4M2 6h4M18 18h4" />
-              <rect x="6" y="6" width="12" height="12" rx="1" />
-            </template>
-            <template v-if="item.icon === 'process'">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M7 12l3 2-3 2M13 16h4" />
-            </template>
-            <template v-if="item.icon === 'publish'">
-              <path d="M12 16V4M12 4l5 5M12 4L7 9" />
-              <path d="M4 14v5a2 2 0 002 2h12a2 2 0 002-2v-5" />
-            </template>
-          </svg>
-          <transition name="fade">
-            <span v-show="sidebarOpen" class="nav-label">{{ item.label }}</span>
-          </transition>
-        </div>
+        />
       </div>
-      <div class="nav-item settings" :class="{ active: showSettings }" @click="showSettings = !showSettings">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-        </svg>
-        <transition name="fade">
-          <span v-show="sidebarOpen" class="nav-label">Settings</span>
-        </transition>
-      </div>
+      <NavIcon
+        icon="settings"
+        label="Settings"
+        class="nav-settings-item"
+        :active="showSettings"
+        :collapsed="!sidebarOpen"
+        @click="showSettings = !showSettings"
+      />
     </nav>
 
     <main class="content">
@@ -130,6 +95,7 @@ import EditorModule from './modules/Editor/EditorModule.vue'
 import ProcessModule from './modules/Process/ProcessModule.vue'
 import PublishModule from './modules/Publish/PublishModule.vue'
 import SettingsPanel from './modules/Settings/SettingsPanel.vue'
+import NavIcon from './components/NavIcon.vue'
 
 const PIPELINE_STAGES = [
   { id: 'triage',  label: 'Triage',  completeKey: 'triageComplete',  module: 'triage' },
@@ -159,7 +125,8 @@ export default {
   name: 'App',
   components: {
     HomeModule, TriageModule, SorterModule, GalleryModule,
-    EditorModule, ProcessModule, PublishModule, SettingsPanel, SessionComplete
+    EditorModule, ProcessModule, PublishModule, SettingsPanel, SessionComplete,
+    NavIcon
   },
   provide() {
     return {
@@ -199,9 +166,9 @@ export default {
       navItems: [
         { id: 'home',    label: 'Home',    icon: 'home' },
         { id: 'triage',  label: 'Triage',  icon: 'triage' },
-        { id: 'sorter',  label: 'Sorter',  icon: 'sorter' },
+        { id: 'sorter',  label: 'Sorter',  icon: 'sort' },
         { id: 'gallery', label: 'Gallery', icon: 'gallery' },
-        { id: 'editor',  label: 'Editor',  icon: 'editor' },
+        { id: 'editor',  label: 'Editor',  icon: 'edit' },
         { id: 'process', label: 'Process', icon: 'process' },
         { id: 'publish', label: 'Publish', icon: 'publish' },
       ]
@@ -388,10 +355,10 @@ export default {
 </script>
 
 <style>
+/* Sidebar width vars now come from tokens.css (imported in main.js).
+   --accent stays app-wide (used by nearly every module's stylesheet). */
 :root {
-  --sidebar-collapsed: 56px;
-  --sidebar-expanded: 180px;
-  --accent: #c9a84c;
+  --accent: var(--color-accent);
 }
 
 /* Dark theme (default) */
@@ -482,54 +449,7 @@ body {
   flex-direction: column;
 }
 
-.nav-item {
-  display: flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 16px;
-  cursor: pointer;
-  color: var(--text2);
-  border-left: 3px solid transparent;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  white-space: nowrap;
-  -webkit-app-region: no-drag;
-}
-
-.nav-item:hover {
-  color: var(--text);
-  background: var(--surface2);
-}
-
-.nav-item.active {
-  color: var(--accent);
-  border-left-color: var(--accent);
-  background: rgba(201, 168, 76, 0.08);
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.nav-label {
-  margin-left: 14px;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.settings {
+.nav-settings-item {
   margin-bottom: 12px;
 }
 
@@ -612,7 +532,7 @@ body {
 
 .pipeline-step.step-current {
   color: var(--accent);
-  background: rgba(201, 168, 76, 0.08);
+  background: var(--color-accent-dim);
   font-weight: 600;
 }
 

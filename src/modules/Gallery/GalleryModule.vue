@@ -430,6 +430,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .gallery {
   display: flex;
   flex-direction: column;

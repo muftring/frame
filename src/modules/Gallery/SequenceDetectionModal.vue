@@ -484,6 +484,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 .editor-backdrop {
   position: fixed;
   inset: 0;

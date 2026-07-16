@@ -342,6 +342,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 /* ── Modal shell ──────────────────────────────── */
 .editor-backdrop {
   position: fixed;

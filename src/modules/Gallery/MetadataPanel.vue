@@ -383,6 +383,7 @@ export default {
 </script>
 
 <style scoped>
+/* TODO Branding-B: migrate to tokens.css variables */
 /* ── Panel shell ──────────────────────────────── */
 .meta-panel {
   position: absolute;
