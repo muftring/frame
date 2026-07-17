@@ -54,6 +54,7 @@
           @session-started="handleSessionStarted"
           @session-resume="handleSessionResume"
           @session-gallery="handleSessionGallery"
+          @navigate="handleNavigate"
         />
         <TriageModule v-else-if="currentModule === 'triage'" @navigate="handleNavigate" />
         <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />

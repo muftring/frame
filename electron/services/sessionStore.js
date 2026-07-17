@@ -280,7 +280,8 @@ function sessionList() {
              COALESCE(p.process_complete, 0)         AS processComplete,
              COALESCE(p.publish_complete, 0)         AS publishComplete,
              (SELECT COUNT(*) FROM files        WHERE session_id = s.id) AS fileCount,
-             (SELECT COUNT(*) FROM event_groups WHERE session_id = s.id) AS groupCount
+             (SELECT COUNT(*) FROM event_groups WHERE session_id = s.id) AS groupCount,
+             (SELECT COUNT(*) FROM files        WHERE session_id = s.id AND status = 'kept') AS keptCount
       FROM sessions s
       LEFT JOIN pipeline_state p ON p.session_id = s.id
       ORDER BY s.updated_at DESC
@@ -340,6 +341,54 @@ function sessionArchive(sessionId) {
     return { success: true }
   } catch (err) {
     return { error: err.message }
+  }
+}
+
+// Home screen library stats — simple COUNT queries, each tolerant of a
+// missing/uninitialized DB (returns 0 rather than throwing, since these
+// back a purely informational stats row).
+function sessionCount() {
+  try {
+    const db = getDb()
+    return db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE status IN ('active', 'complete')").get().n
+  } catch {
+    return 0
+  }
+}
+
+function fileCount() {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT COUNT(*) AS n FROM files').get().n
+  } catch {
+    return 0
+  }
+}
+
+function fileCountByStatus(status) {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT COUNT(*) AS n FROM files WHERE status = ?').get(status).n
+  } catch {
+    return 0
+  }
+}
+
+function panoCountSets() {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT COUNT(*) AS n FROM pano_sets').get().n
+  } catch {
+    return 0
+  }
+}
+
+function burstCountComposited() {
+  try {
+    const db = getDb()
+    return db.prepare("SELECT COUNT(*) AS n FROM burst_sets WHERE status = 'composited'").get().n
+  } catch {
+    return 0
   }
 }
 
@@ -1244,6 +1293,11 @@ module.exports = {
   sessionUpdate,
   sessionArchive,
   sessionUpdatePipeline,
+  sessionCount,
+  fileCount,
+  fileCountByStatus,
+  panoCountSets,
+  burstCountComposited,
   groupCreate,
   pipelineSetLastFile,
   groupRename,

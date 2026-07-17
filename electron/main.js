@@ -188,6 +188,11 @@ ipcMain.handle('session:list', () => sessionStore.sessionList())
 ipcMain.handle('session:get', (_, sessionId) => sessionStore.sessionGet(sessionId))
 ipcMain.handle('session:update', (_, sessionId, fields) => sessionStore.sessionUpdate(sessionId, fields))
 ipcMain.handle('session:archive', (_, sessionId) => sessionStore.sessionArchive(sessionId))
+ipcMain.handle('session:count', () => sessionStore.sessionCount())
+ipcMain.handle('file:count', () => sessionStore.fileCount())
+ipcMain.handle('file:countByStatus', (_, status) => sessionStore.fileCountByStatus(status))
+ipcMain.handle('pano:countSets', () => sessionStore.panoCountSets())
+ipcMain.handle('burst:countComposited', () => sessionStore.burstCountComposited())
 ipcMain.handle('session:updatePipeline', (event, sessionId, stage, complete) => {
   const result = sessionStore.sessionUpdatePipeline(sessionId, stage, complete)
   if (result.allComplete) {
