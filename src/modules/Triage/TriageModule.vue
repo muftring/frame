@@ -45,9 +45,12 @@
           Reading EXIF: {{ scanProgress.current }} / {{ scanProgress.total }} files
         </div>
 
-        <div v-if="noFilesFound" class="empty-msg">
-          No image files found in this folder.
-        </div>
+        <EmptyState
+          v-if="noFilesFound"
+          icon="triage"
+          title="No images found"
+          description="This folder doesn't contain any recognized image files."
+        />
 
         <div v-if="scannedFiles.length && !scanning" class="scan-summary">
           {{ scannedFiles.length }} images found &middot; {{ groups.length }} groups detected
@@ -123,8 +126,11 @@
 </template>
 
 <script>
+import EmptyState from '../../components/EmptyState.vue'
+
 export default {
   name: 'TriageModule',
+  components: { EmptyState },
   inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
   emits: ['navigate'],
   data() {

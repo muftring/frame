@@ -53,16 +53,12 @@
             <div class="empty-title">No images in folder</div>
             <div class="empty-hint">Try a different folder</div>
           </template>
-          <template v-else>
-            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2" />
-              <rect x="28" y="4" width="16" height="16" rx="2" />
-              <rect x="4" y="28" width="16" height="16" rx="2" />
-              <rect x="28" y="28" width="16" height="16" rx="2" />
-            </svg>
-            <div class="empty-title">Gallery</div>
-            <div class="empty-hint">Select a smart album or open a folder</div>
-          </template>
+          <EmptyState
+            v-else
+            icon="gallery"
+            title="Nothing here yet"
+            description="Select a folder or smart album to browse your photos."
+          />
         </div>
 
         <div v-if="loading" class="empty-state-full">
@@ -126,11 +122,12 @@ import ImageViewer from './ImageViewer.vue'
 import SmartAlbumsPanel from './SmartAlbumsPanel.vue'
 import PanoSetView from './PanoSetView.vue'
 import BurstSetView from './BurstSetView.vue'
+import EmptyState from '../../components/EmptyState.vue'
 
 export default {
   name: 'GalleryModule',
   inject: ['toast', 'session'],
-  components: { ImageViewer, SmartAlbumsPanel, PanoSetView, BurstSetView },
+  components: { ImageViewer, SmartAlbumsPanel, PanoSetView, BurstSetView, EmptyState },
   props: {
     sessionState:  { type: Object, default: null },
     activeSession: { type: Object, default: null },

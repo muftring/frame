@@ -49,18 +49,22 @@
 
       <!-- Module area -->
       <div class="module-area">
-        <HomeModule
-          v-if="currentModule === 'home'"
-          @session-started="handleSessionStarted"
-          @session-resume="handleSessionResume"
-          @session-gallery="handleSessionGallery"
-        />
-        <TriageModule v-else-if="currentModule === 'triage'" @navigate="handleNavigate" />
-        <SorterModule v-else-if="currentModule === 'sorter'" :initial-folder="moduleData" @navigate="handleNavigate" />
-        <GalleryModule v-else-if="currentModule === 'gallery'" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" @navigate="handleNavigate" />
-        <EditorModule v-else-if="currentModule === 'editor'" :image-path="moduleData" />
-        <ProcessModule v-else-if="currentModule === 'process'" @navigate="handleNavigate" />
-        <PublishModule v-else-if="currentModule === 'publish'" />
+        <Transition name="module" mode="out-in">
+          <HomeModule
+            v-if="currentModule === 'home'"
+            key="home"
+            @session-started="handleSessionStarted"
+            @session-resume="handleSessionResume"
+            @session-gallery="handleSessionGallery"
+            @navigate="handleNavigate"
+          />
+          <TriageModule v-else-if="currentModule === 'triage'" key="triage" @navigate="handleNavigate" />
+          <SorterModule v-else-if="currentModule === 'sorter'" key="sorter" :initial-folder="moduleData" @navigate="handleNavigate" />
+          <GalleryModule v-else-if="currentModule === 'gallery'" key="gallery" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" @navigate="handleNavigate" />
+          <EditorModule v-else-if="currentModule === 'editor'" key="editor" :image-path="moduleData" />
+          <ProcessModule v-else-if="currentModule === 'process'" key="process" @navigate="handleNavigate" />
+          <PublishModule v-else-if="currentModule === 'publish'" key="publish" />
+        </Transition>
       </div>
     </main>
 
@@ -77,7 +81,7 @@
     <!-- Toast notifications -->
     <div class="toast-container">
       <transition-group name="toast">
-        <div v-for="t in toasts" :key="t.id" class="toast" :class="'toast-' + t.type" :style="t.color ? { color: t.color } : null">
+        <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" :style="t.color ? { color: t.color } : null">
           {{ t.message }}
         </div>
       </transition-group>
@@ -133,7 +137,8 @@ export default {
       appSettings: this.settings,
       toast: this.addToast,
       session: this.sessionProxy,
-      updatePipeline: this.handlePipelineUpdate
+      updatePipeline: this.handlePipelineUpdate,
+      setModalOpen: (v) => { this.modalOpen = v }
     }
   },
   data() {
@@ -144,6 +149,7 @@ export default {
       galleryState: null,
       showSettings: false,
       settingsReady: false,
+      modalOpen: false,
       activeSession: null,
       sessionProxy: { id: null, name: null, currentStage: null, pipelineState: {} },
       showSessionComplete: false,
@@ -321,23 +327,29 @@ export default {
       this.moduleData = { type: 'session-status', sessionId: session.id, status: 'kept' }
       this.currentModule = 'gallery'
     },
-    addToast(message, type = 'info', color = null) {
+    addToast(message, type = 'info', color = null, duration = 3000) {
       const id = Date.now() + Math.random()
       this.toasts.push({ id, message, type, color })
       setTimeout(() => {
         this.toasts = this.toasts.filter(t => t.id !== id)
-      }, 3000)
+      }, duration)
     },
     handleGlobalKey(e) {
+      const target = e.target
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return
+      if (this.modalOpen || this.showSessionComplete) return
+
       if (e.metaKey || e.ctrlKey) {
+        // Home is ⌘1; the rest of the pipeline stages follow in order,
+        // shifted up one slot from the old ⌘0-⌘6 scheme.
         const moduleKeys = {
-          '0': 'home',
-          '1': 'triage',
-          '2': 'sorter',
-          '3': 'gallery',
+          '1': 'home',
+          '2': 'triage',
+          '3': 'sorter',
           '4': 'editor',
-          '5': 'process',
-          '6': 'publish',
+          '5': 'gallery',
+          '6': 'process',
+          '7': 'publish',
         }
         if (moduleKeys[e.key]) {
           e.preventDefault()
@@ -428,7 +440,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: width 0.2s ease, min-width 0.2s ease;
+  transition: width var(--dur-slow) var(--ease-out), min-width var(--dur-slow) var(--ease-out);
   overflow: hidden;
   user-select: none;
 }
@@ -439,7 +451,7 @@ body {
 }
 
 .drag-region {
-  height: 40px;
+  height: 44px; /* clears the macOS traffic lights (trafficLightPosition y:16) */
   -webkit-app-region: drag;
   flex-shrink: 0;
 }
@@ -470,6 +482,26 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.module-area > * {
+  width: 100%;
+  height: 100%;
+}
+
+.module-enter-active {
+  transition: opacity var(--dur-base) var(--ease-out),
+              transform var(--dur-base) var(--ease-out);
+}
+.module-leave-active {
+  transition: opacity var(--dur-fast) ease-in;
+}
+.module-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.module-leave-to {
+  opacity: 0;
 }
 
 /* ── Pipeline bar ─────────────────────────────── */
@@ -554,55 +586,79 @@ body {
 .toast-container {
   position: fixed;
   bottom: 20px;
-  left: 76px;
-  z-index: 500;
+  left: 20px;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  pointer-events: none;
 }
 
 .toast {
-  padding: 10px 18px;
-  border-radius: 6px;
-  font-size: 13px;
-  max-width: 380px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  max-width: 320px;
+  pointer-events: none;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.toast-info {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
+.toast.error {
+  border-color: rgba(178, 34, 34, 0.4);
+  color: #e88;
 }
 
-.toast-error {
-  background: var(--surface);
-  border: 1px solid rgba(239, 83, 80, 0.4);
-  color: #ef5350;
+.toast.success {
+  border-color: rgba(74, 154, 90, 0.4);
+  color: var(--color-keep-hover);
 }
 
-.toast-success {
-  background: var(--surface);
-  border: 1px solid rgba(102, 187, 106, 0.4);
-  color: #66bb6a;
+.toast.warn {
+  border-color: rgba(201, 168, 76, 0.4);
+  color: var(--color-accent);
 }
 
 .toast-enter-active {
-  transition: all 0.25s ease;
+  transition: all 0.2s ease-out;
 }
 .toast-leave-active {
-  transition: all 0.2s ease;
+  transition: all 0.15s ease-in;
 }
 .toast-enter-from {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(8px);
 }
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-8px);
 }
 
 /* ── Global utilities ─────────────────────────── */
+
+/* Applies to every .btn across the app (each module keeps its own scoped
+   colors/borders) — added here once rather than duplicated per component. */
+.btn {
+  transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+
+/* Fade-in for any modal/dialog overlay in the app, keyed off the
+   .modal-overlay class name every module already uses — a CSS animation
+   instead of a per-component <Transition> so it applies everywhere without
+   touching each modal's own markup. */
+.modal-overlay {
+  animation: modal-fade-in var(--dur-base) var(--ease-out);
+}
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .spinner {
   width: 20px;
   height: 20px;
