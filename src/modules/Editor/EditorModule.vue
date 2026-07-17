@@ -55,14 +55,15 @@
         @mouseup="onMouseUp"
         @mouseleave="onMouseUp"
       ></canvas>
-      <div v-if="!hasImage" class="canvas-empty empty-state-full">
-        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 4v8M36 36v8M4 12h8M36 36h8" />
-          <rect x="12" y="12" width="24" height="24" rx="2" />
-        </svg>
-        <div class="empty-title">No image open</div>
-        <div class="empty-hint">Open an image to start editing</div>
-      </div>
+      <EmptyState
+        v-if="!hasImage"
+        class="canvas-empty"
+        icon="edit"
+        title="No image open"
+        description="Open an image to rotate, crop, or adjust it."
+        action-label="Open image"
+        @action="openImage"
+      />
       <div v-if="operating" class="canvas-loading">
         <div class="spinner"></div>
       </div>
@@ -83,8 +84,11 @@
 </template>
 
 <script>
+import EmptyState from '../../components/EmptyState.vue'
+
 export default {
   name: 'EditorModule',
+  components: { EmptyState },
   inject: ['toast', 'session'],
   props: {
     imagePath: { type: String, default: null }

@@ -98,11 +98,11 @@
         </div>
         <button class="empty-import-btn" @click="openNewSessionModal">Import your first photos →</button>
         <div class="empty-hints-row">
-          <span class="hint-pill">⌘1 Triage</span>
-          <span class="hint-pill">⌘2 Sort</span>
+          <span class="hint-pill">⌘2 Triage</span>
+          <span class="hint-pill">⌘3 Sort</span>
           <span class="hint-pill">⌘4 Edit</span>
-          <span class="hint-pill">⌘5 Process</span>
-          <span class="hint-pill">⌘6 Publish</span>
+          <span class="hint-pill">⌘6 Process</span>
+          <span class="hint-pill">⌘7 Publish</span>
         </div>
       </div>
     </div>
@@ -296,6 +296,12 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
+  -webkit-app-region: drag;
+}
+
+.topbar-session-pill,
+.topbar-version {
+  -webkit-app-region: no-drag;
 }
 
 .topbar-logo {
@@ -356,7 +362,7 @@ export default {
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.15s, border-color 0.15s;
-  color: var(--color-text-3);
+  color: var(--color-text-2);
 }
 
 .pb-dot {
@@ -396,7 +402,7 @@ export default {
 
 .pb-hint {
   font-size: 9px;
-  color: var(--color-text-3);
+  color: var(--color-text-2);
   font-style: italic;
   margin-left: 6px;
 }
@@ -594,7 +600,7 @@ export default {
   border-radius: 4px;
   padding: 2px 7px;
   font-size: 9px;
-  color: var(--color-text-3);
+  color: var(--color-text-2);
   font-family: var(--font-mono);
 }
 

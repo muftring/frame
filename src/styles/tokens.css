@@ -70,3 +70,47 @@
   --z-toast:  300;
   --z-splash: 400;
 }
+
+/* Typography tightening. Note: `color` is deliberately omitted here —
+   App.vue's .theme-dark/.theme-gray/.theme-light classes already set a
+   theme-reactive --text used by body's color, and --color-text below is a
+   fixed dark-mode value. Setting color here too would only coincidentally
+   match in the dark theme and would make body text unreadable in the
+   Gray/Light themes if this rule ever won the cascade over App.vue's. */
+body, #app {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1 { font-size: var(--text-lg); font-weight: 500; }
+h2 { font-size: var(--text-md); font-weight: 500; }
+h3 { font-size: var(--text-base); font-weight: 500; }
+
+/* Scrollbar styling — all panels */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-3);
+}
+
+/* Focus rings — accessibility */
+:focus-visible {
+  outline: 1.5px solid var(--color-accent);
+  outline-offset: 2px;
+}
+button:focus:not(:focus-visible) { outline: none; }
+
+/* Selection color. Only the (translucent) background is set here — color
+   is deliberately left alone so selected text keeps its own theme-correct
+   color instead of a fixed dark-mode value that could go unreadable in
+   the Gray/Light themes. */
+::selection {
+  background: var(--color-accent-dim);
+}

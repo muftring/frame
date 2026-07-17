@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, dialog, protocol, net } = require('electron')
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, dialog, protocol, net, screen } = require('electron')
 const path = require('path')
 const url = require('url')
 const fileSystem = require('./services/fileSystem')
@@ -292,11 +292,32 @@ ipcMain.handle('store:set', async (_, key, value) => {
 // it's actually ready, avoiding a white-flash. Callers that don't care
 // about that (the 'activate' handler, the tray menu's "Show Frame"
 // fallback) get the previous immediate-show behavior unchanged.
+// A saved x/y is only trustworthy if it still lands on a currently
+// connected display — e.g. the window was last positioned on a second
+// monitor that's since been unplugged. When it doesn't, drop x/y (not
+// width/height) so Electron falls back to its default centered placement
+// on whatever display is available now.
+function validateBoundsOnScreen(bounds) {
+  if (bounds?.x == null || bounds?.y == null) return bounds
+  const displays = screen.getAllDisplays()
+  const isOnScreen = displays.some(d => (
+    bounds.x >= d.bounds.x &&
+    bounds.y >= d.bounds.y &&
+    bounds.x < d.bounds.x + d.bounds.width &&
+    bounds.y < d.bounds.y + d.bounds.height
+  ))
+  if (!isOnScreen) {
+    const { x, y, ...rest } = bounds
+    return rest
+  }
+  return bounds
+}
+
 async function createWindow({ startHidden = false } = {}) {
   let bounds = null
   try {
     const store = await getStore()
-    bounds = store.get('windowBounds')
+    bounds = validateBoundsOnScreen(store.get('windowBounds'))
   } catch {}
 
   const win = new BrowserWindow({
@@ -308,6 +329,7 @@ async function createWindow({ startHidden = false } = {}) {
     show: !startHidden,
     backgroundColor: '#1a1a1a',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 16, y: 16 } : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -323,6 +345,10 @@ async function createWindow({ startHidden = false } = {}) {
   const saveBounds = () => {
     clearTimeout(boundsTimer)
     boundsTimer = setTimeout(async () => {
+      // Don't persist a maximized/minimized size as the "normal" restore
+      // size — getBounds() during either state reflects the maximized/
+      // minimized geometry, not the size the user actually resized to.
+      if (win.isMaximized() || win.isMinimized()) return
       try {
         const store = await getStore()
         store.set('windowBounds', win.getBounds())

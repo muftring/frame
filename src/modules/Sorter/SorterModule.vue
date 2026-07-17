@@ -39,6 +39,7 @@
           :key="img.path"
           class="film-thumb"
           :class="{ active: i === currentIndex, trashed: img.status === 'trashed', kept: img.status === 'kept', 'has-pano': img.panoSetId && !img.burstSetId, 'has-burst': img.burstSetId }"
+          :title="img.name"
           @click="currentIndex = i"
         >
           <img v-if="img.thumbnail" :src="img.thumbnail" />
@@ -104,16 +105,20 @@
     </div>
 
     <!-- Empty state -->
-    <div class="empty-state-full" v-if="!images.length && !loading">
-      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="6" y="10" width="36" height="28" rx="3" />
-        <path d="M6 18h36" />
-        <circle cx="24" cy="31" r="5" />
-      </svg>
-      <div class="empty-title">No images loaded</div>
-      <div class="empty-hint" v-if="sessionMode">No files found in this session</div>
-      <div class="empty-hint" v-else>Open a folder to start sorting photos</div>
-    </div>
+    <EmptyState
+      v-if="!images.length && !loading && !sessionMode"
+      icon="sort"
+      title="No photos loaded"
+      description="Open a folder or resume a session to start sorting."
+      action-label="Open folder"
+      @action="openFolder"
+    />
+    <EmptyState
+      v-if="!images.length && !loading && sessionMode"
+      icon="sort"
+      title="No photos loaded"
+      description="No files found in this session."
+    />
     <div class="empty-state-full" v-if="loading">
       <div class="spinner"></div>
       <div class="empty-hint">Loading images...</div>
@@ -210,13 +215,14 @@
 
 <script>
 import BurstCompareView from './BurstCompareView.vue'
+import EmptyState from '../../components/EmptyState.vue'
 
 const TAG_BADGE_ORDER = ['bw-candidate', 'pano-candidate', 'burst-candidate']
 const TAG_BADGE_ABBREV = { 'bw-candidate': 'B&W', 'pano-candidate': 'PANO', 'burst-candidate': 'BRST' }
 
 export default {
   name: 'SorterModule',
-  components: { BurstCompareView },
+  components: { BurstCompareView, EmptyState },
   inject: ['toast', 'session', 'updatePipeline'],
   props: {
     initialFolder: { type: String, default: null }
