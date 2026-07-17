@@ -17,7 +17,7 @@ Export/Import feature fully designed but Claude Code prompts not yet written —
 **Next actions:**
 - [ ] Complete Phases 11–14 in Claude Code
 - [ ] Complete Branding B1 and B2, verify in app
-- [ ] Write Export/Import Claude Code prompt
+- [ ] Run Export/Import + Auto-Backup prompts (E1, E2) in Claude Code
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] Mac migration using Export/Import
 
@@ -32,6 +32,7 @@ Export/Import feature fully designed but Claude Code prompts not yet written —
 | 2026-07 | Chose Times New Roman Regular Italic (J6) for logomark F | Most distinctive of 12 options explored; italic echoes strip tilt rhythm; regular weight lets bright rim do the lifting |
 | 2026-07 | Chose H3 strip treatment — 5 fading gold strips + dark gap + #ffd966 rim on F | 5 strips fill the icon completely; fading opacity reads as negative film; I3 rim separates F from strips without being decorative |
 | 2026-07 | Home screen redesigned: session cards + pipeline bar + library stats | Original home was a plain list — not intuitive, bland for new users; redesign makes pipeline visible and rewards continued use with growing stats |
+| 2026-07 | Export/Import + Auto-Backup: E1 + E2 prompt pair, `.framelib` zip format, 7-day rolling backup, pre-import backup, Snapshots deferred to v2.0 | Snapshot rollback approximated by Option A delete; auto-backup covers corruption risk at low cost |
 | 2026-07 | Kept gold/dark color palette (#c9a84c on #1a1a1a) — no color scheme change | Strong combination, cinematic, right for a photography tool; changing it would require rebuilding all token references for little gain |
 | 2026-07 | Blog/paper format: long-form narrative + companion prompt appendix | Lets general readers read the story without prompt overwhelm; developers can go deep in companion doc |
 | 2026-07 | Export/Import: Approach A (path remapping on import) for Mac migration | Approach B (relative paths) is better long-term but requires schema change; Approach A implementable in one Claude Code session within the 4–6 week window |
@@ -580,7 +581,180 @@ Replace absolute `full_path` in files table with paths relative to a library roo
 
 ---
 
-## Blog / Paper Outline
+## Export / Import / Backup
+
+Three related but distinct features. Two prompts (E1 and E2) cover all three.
+
+### The Distinction
+
+| Feature | Purpose | Frequency | Scope | Initiated by |
+|---|---|---|---|---|
+| **Export/Import** | Move library between machines | Rare / one-time | Whole library, portable | User explicitly |
+| **Auto-backup** | Protect against loss or mistakes | Every launch | Database only, local | Automatic |
+| **Snapshots** | Experiment with rollback position | Per-session | One session's DB state | User explicitly |
+
+Snapshots are deferred to v2.0. See [Future Features](#future-features).
+
+---
+
+### Prompt E1 — Export / Import
+
+**Use case:** Mac migration, second machine, sharing a library.
+
+**The `.framelib` format** (a zip file):
+```
+Frame_Export_[date].framelib
+├── manifest.json       version, export date, hostname, photo root paths used
+├── frame.db            complete SQLite database copy
+├── thumbcache/         all thumbnails (optional — checkbox + size warning)
+└── settings.json       electron-store config
+```
+
+**Export flow:**
+1. File → Export Frame Library…
+2. Options: include thumbnail cache (shows size, default OFF), destination picker
+3. "Export" button — zip created with progress bar
+4. Success: reveal in Finder
+
+**Import flow (5 steps):**
+1. File → Import Frame Library… (or double-click `.framelib` file)
+2. Read manifest.json, show summary: N sessions, M photos, exported from [hostname] on [date]
+3. **Path remapping** — for each root path in manifest that doesn't resolve on this machine, show a folder picker: `[old path] → [pick new location]`. "Skip" option for paths that no longer exist.
+4. Confirmation: "Import will replace your current Frame library. A backup of your current library will be created first."
+5. Progress: backup current db → copy frame.db → update all `full_path` values with remappings → copy thumbcache (if included) → write settings → prompt to restart
+
+**Pre-import backup:** Always create `~/.frame/backups/frame-pre-import-[timestamp].db` before overwriting. Non-negotiable — protects against a bad import destroying the existing library.
+
+**`.framelib` file association:** Register in electron-builder so double-clicking opens Frame and triggers import.
+
+**IPC channels:**
+- `library:export(options)` → streams progress, returns `{ success, outputPath, sizeBytes }`
+- `library:getManifest(filePath)` → reads manifest from .framelib without full extract
+- `library:import(filePath, pathMappings)` → full import with remapping, returns `{ success, sessionsImported, filesImported }`
+- `library:validateDb(dbPath)` → runs `PRAGMA integrity_check`, returns `{ valid, errors }`
+
+**Components:**
+- `src/modules/Settings/ExportPanel.vue`
+- `src/modules/Settings/ImportPanel.vue`
+- Both accessible from Settings panel under a new "Library" section
+
+---
+
+### Prompt E2 — Auto-Backup
+
+**Use case:** Insurance against database corruption, failed migrations, bad schema updates, accidental session deletion.
+
+**What it backs up:** The SQLite database (`frame.db`) only. Photo files are the user's responsibility (Time Machine, external drive). Make this explicit in the UI.
+
+**What it does NOT back up:** Photo files, thumbnail cache, electron-store settings.
+
+**Trigger:** On every app launch, before the main window appears (during splash screen "Initializing database" step).
+
+**Retention:** Keep last 7 backups. Auto-delete oldest when adding an 8th. 7 days of daily use = 1 week of history.
+
+**Storage location:** `~/.frame/backups/`
+**Filename format:** `frame-YYYY-MM-DD-HHmm.db`
+**Example:** `frame-2026-07-17-0834.db`
+
+**Deduplication:** If a backup already exists for today (same YYYY-MM-DD), skip — don't create a duplicate for multiple launches in the same day. Check by listing existing backups before creating.
+
+**IPC channels:**
+- `backup:create()` → called on launch, returns `{ success, backupPath, skipped }`
+- `backup:list()` → returns `[{ filename, path, sizeBytes, createdAt }]` sorted newest first
+- `backup:restore(backupPath)` → confirm dialog, copy backup over current db, returns `{ success }`
+- `backup:delete(backupPath)` → delete a specific backup file
+- `backup:openFolder()` → `shell.showItemInFolder()` on backups directory
+
+**Settings panel — "Library" section:**
+
+New section in SettingsPanel.vue:
+
+```
+LIBRARY
+
+  Auto-backup
+    ✓ Back up database on launch (recommended)
+    [toggle — default ON, stored in electron-store]
+
+  Recent backups                              [Open folder ↗]
+  ┌─────────────────────────────────────────────────────┐
+  │  Today, 8:34 AM          frame-2026-07-17-0834.db  │
+  │  2.1 MB                  [Restore]  [Delete]        │
+  ├─────────────────────────────────────────────────────┤
+  │  Yesterday, 9:12 AM      frame-2026-07-16-0912.db  │
+  │  2.0 MB                  [Restore]  [Delete]        │
+  └─────────────────────────────────────────────────────┘
+  (up to 7 shown)
+
+  Note: Frame backs up your session database automatically.
+  Your photo files are not included — back those up separately
+  using Time Machine or your preferred backup solution.
+```
+
+**Restore confirmation dialog:**
+```
+Restore from backup?
+
+This will replace your current Frame library with the
+backup from [date/time]. Any changes made since then
+will be lost.
+
+Your current library will be saved as a backup first.
+
+[Cancel]   [Restore and restart]
+```
+
+**On restore:** Before copying the backup over current db, create one more backup of the current state (`frame-pre-restore-[timestamp].db`). Then copy, then call `app.relaunch()` + `app.exit(0)`.
+
+**Integration with E1:** The `backup:create()` function is also called by `library:import()` before any import. Shared utility function in `electron/services/backupService.js`.
+
+---
+
+## Future Features
+
+Features that are designed and understood but explicitly deferred. Revisit for v2.0.
+
+### Snapshots 💭
+
+**What it is:** A named, point-in-time capture of a single session's database state. Lets you experiment (try aggressive culling, try reordering events) with a rollback position if you change your mind.
+
+**Why deferred:** The existing Option A delete behavior already approximates this for the most common case — deleted files stay on disk, un-delete is instant via status change. The added complexity of snapshot UI (naming, browsing, restoring per-session state) isn't justified until the use case is more clearly felt by real users.
+
+**When to revisit:** If users express frustration with not being able to undo bulk operations (e.g., "I accidentally marked 50 photos as deleted and can't undo"). The auto-backup (E2) partially addresses this — you can restore from yesterday's backup — but session-scoped snapshots would be more surgical.
+
+**Rough design when the time comes:**
+- `session_snapshots` table: id, session_id, name, created_at, db_snapshot (BLOB or path to snapshot file)
+- "Take snapshot" button in Sorter toolbar when a session is active
+- Snapshot browser in session detail view
+- Restore: re-apply the snapshot's file status values to the current files table (not a full DB restore)
+- Keep max 5 snapshots per session
+
+---
+
+### Relative Paths (v2.0) 💭
+
+Replace absolute `full_path` in files table with paths relative to a library root. Eliminates Mac migration path remapping problem permanently. Schema change — plan carefully. Supersedes the path remapping step in E1 once implemented.
+
+---
+
+### Theme System (v2.0) 💭
+
+Three themes:
+- **Dark Gold** (current) — #1a1a1a + #c9a84c
+- **Light Editorial** — #F7F4F0 + #C4522A burnt sienna
+- **Bold Violet** — #16111F + #E8943A amber
+
+Implementation: CSS custom property swap on `:root`. All colors already in tokens.css as variables. Theme is one variable set swap. Add theme picker to Settings.
+
+---
+
+### In-App Help System (v2.0) 💭
+
+Deferred until user base exists. For now: Option 4 hybrid docs.
+- **PDF:** Quick start (1 page) + keyboard reference (1 page) + pipeline overview (1 page)
+- **Website:** Full reference docs, tutorial walkthroughs, troubleshooting, changelog
+
+---
 
 **Title:** Frame: A Photo Workflow Studio, Built with Claude  
 **Subtitle:** A case study in domain-driven software development through human-AI collaboration
@@ -643,3 +817,731 @@ Replace absolute `full_path` in files table with paths relative to a library roo
 *This document is maintained alongside the Frame codebase.*  
 *Design conversation: Claude.ai (long-form chat)*  
 *Build: Claude Code*
+
+---
+
+## Claude Code Prompts — E1 and E2
+
+### Prompt E1 — Export / Import
+
+```
+Add Export and Import capabilities to Frame.
+This covers moving a Frame library between machines —
+the primary use case is Mac migration.
+
+Build after Branding B is complete and verified.
+
+═══════════════════════════════════════════════════════════
+PART 1 — SHARED BACKUP UTILITY
+═══════════════════════════════════════════════════════════
+
+Create electron/services/backupService.js
+
+This module is shared by both Export/Import (E1) and
+Auto-Backup (E2). Build it first — both prompts depend on it.
+
+const path = require('path')
+const fs   = require('fs/promises')
+const { app } = require('electron')
+
+const DB_PATH      = path.join(app.getPath('home'), '.frame', 'frame.db')
+const BACKUPS_DIR  = path.join(app.getPath('home'), '.frame', 'backups')
+
+async function ensureBackupsDir() {
+  await fs.mkdir(BACKUPS_DIR, { recursive: true })
+}
+
+async function createBackup(label = null) {
+  // label: optional string suffix, e.g. 'pre-import', 'pre-restore'
+  // default filename: frame-YYYY-MM-DD-HHmm.db
+  // labeled filename: frame-pre-import-[timestamp].db
+  await ensureBackupsDir()
+
+  const now  = new Date()
+  const date = now.toISOString().slice(0, 10)          // YYYY-MM-DD
+  const time = now.toTimeString().slice(0, 5).replace(':', '') // HHmm
+
+  const filename = label
+    ? `frame-${label}-${date}-${time}.db`
+    : `frame-${date}-${time}.db`
+
+  const dest = path.join(BACKUPS_DIR, filename)
+  await fs.copyFile(DB_PATH, dest)
+  const stat = await fs.stat(dest)
+  return { filename, path: dest, sizeBytes: stat.size, createdAt: now.toISOString() }
+}
+
+async function listBackups() {
+  await ensureBackupsDir()
+  const files = await fs.readdir(BACKUPS_DIR)
+  const backups = []
+  for (const f of files) {
+    if (!f.endsWith('.db')) continue
+    const fp   = path.join(BACKUPS_DIR, f)
+    const stat = await fs.stat(fp)
+    backups.push({
+      filename: f,
+      path: fp,
+      sizeBytes: stat.size,
+      createdAt: stat.birthtime.toISOString()
+    })
+  }
+  return backups.sort((a, b) =>
+    new Date(b.createdAt) - new Date(a.createdAt))
+}
+
+async function pruneBackups(keepCount = 7) {
+  // Keep only the N most recent non-labeled backups
+  // (labeled backups like pre-import are kept separately)
+  const all = await listBackups()
+  const regular = all.filter(b =>
+    /^frame-\d{4}-\d{2}-\d{2}-\d{4}\.db$/.test(b.filename))
+  const toDelete = regular.slice(keepCount)
+  for (const b of toDelete) {
+    await fs.unlink(b.path).catch(() => {})
+  }
+}
+
+async function restoreBackup(backupPath) {
+  // Before restoring, save current db as a pre-restore backup
+  await createBackup('pre-restore')
+  await fs.copyFile(backupPath, DB_PATH)
+}
+
+async function validateDb(dbPath) {
+  // Run PRAGMA integrity_check via better-sqlite3
+  const Database = require('better-sqlite3')
+  try {
+    const db = new Database(dbPath, { readonly: true })
+    const result = db.pragma('integrity_check')
+    db.close()
+    const valid = result.length === 1 && result[0].integrity_check === 'ok'
+    return { valid, errors: valid ? [] : result.map(r => r.integrity_check) }
+  } catch(e) {
+    return { valid: false, errors: [e.message] }
+  }
+}
+
+module.exports = {
+  createBackup, listBackups, pruneBackups,
+  restoreBackup, validateDb,
+  DB_PATH, BACKUPS_DIR
+}
+
+Wire up IPC channels in main.js:
+
+  backup:create()
+    → backupService.createBackup()
+    → returns { success, backup: { filename, path, sizeBytes, createdAt } }
+
+  backup:list()
+    → backupService.listBackups()
+    → returns [{ filename, path, sizeBytes, createdAt }]
+
+  backup:restore(backupPath)
+    → backupService.restoreBackup(backupPath)
+    → returns { success }
+    → then: app.relaunch(); app.exit(0)
+
+  backup:delete(backupPath)
+    → fs.unlink(backupPath)
+    → returns { success }
+
+  backup:openFolder()
+    → shell.showItemInFolder(BACKUPS_DIR)
+
+═══════════════════════════════════════════════════════════
+PART 2 — THE .framelib FORMAT
+═══════════════════════════════════════════════════════════
+
+Install as dependency: npm install archiver unzipper
+
+The .framelib file is a ZIP archive with this structure:
+
+  manifest.json
+  frame.db
+  thumbcache/          (optional)
+    [SHA256].jpg
+    [SHA256].jpg
+    ...
+  settings.json        (electron-store config)
+
+manifest.json schema:
+  {
+    "frameVersion": "1.2.0",
+    "exportDate": "2026-07-17T08:34:00.000Z",
+    "hostname": "Michaels-MacBook-Pro",
+    "platform": "darwin",
+    "photoRoots": [
+      "/Volumes/LacrosseDrive/2026",
+      "/Users/michael/Pictures"
+    ],
+    "sessionCount": 12,
+    "fileCount": 4231,
+    "includedThumbs": false,
+    "thumbCount": 0
+  }
+
+photoRoots: extract the unique top-level directory components
+from all full_path values in the files table. These are what
+need remapping on the destination machine.
+
+Extract them with:
+  SELECT DISTINCT full_path FROM files WHERE full_path IS NOT NULL
+  Then parse each path to find the mount point or home-relative root.
+  Group by common prefix — paths sharing the first 2-3 components
+  belong to the same root.
+
+═══════════════════════════════════════════════════════════
+PART 3 — EXPORT IPC CHANNEL
+═══════════════════════════════════════════════════════════
+
+Add IPC channel: library:export(options)
+
+options: {
+  outputPath: string,      -- full path for output .framelib file
+  includeThumbs: boolean,  -- default false
+}
+
+Implementation:
+
+  1. Validate the current database first:
+     const check = await validateDb(DB_PATH)
+     if (!check.valid) return { success: false,
+       error: 'Database integrity check failed: ' + check.errors.join(', ') }
+
+  2. Build manifest.json:
+     Query sessions count, files count from SQLite.
+     Extract unique photo roots from files.full_path.
+     Write manifest object.
+
+  3. Get settings.json:
+     Read electron-store config file from:
+       macOS: ~/Library/Application Support/frame/config.json
+       Win:   %APPDATA%/frame/config.json
+     If not found, use empty object {}.
+
+  4. Create ZIP using archiver:
+     const archive = archiver('zip', { zlib: { level: 6 } })
+     archive.pipe(fs.createWriteStream(outputPath))
+     archive.append(JSON.stringify(manifest, null, 2),
+       { name: 'manifest.json' })
+     archive.file(DB_PATH, { name: 'frame.db' })
+     archive.append(settingsJson, { name: 'settings.json' })
+
+     If includeThumbs:
+       archive.directory(THUMBCACHE_DIR, 'thumbcache')
+
+     archive.finalize()
+
+  5. Stream progress events during archiving:
+     archive.on('progress', (p) => {
+       ipcMain.emit('library:exportProgress', event, {
+         entries: p.entries.processed,
+         bytes: p.fs.processedBytes
+       })
+     })
+
+  6. On finish:
+     const stat = await fs.stat(outputPath)
+     return { success: true, outputPath, sizeBytes: stat.size }
+
+Also add: library:getExportSize(includeThumbs)
+  Returns estimated export size in bytes:
+    DB file size + (thumbcache dir size if includeThumbs) + 50KB overhead
+  Use fs.stat for DB, recursive size sum for thumbcache.
+  Return { dbBytes, thumbBytes, totalBytes }
+
+═══════════════════════════════════════════════════════════
+PART 4 — IMPORT IPC CHANNELS
+═══════════════════════════════════════════════════════════
+
+Add IPC channel: library:getManifest(filePath)
+  Extract and parse manifest.json from the .framelib zip
+  WITHOUT fully extracting it (use unzipper to read
+  a single entry by name).
+  Returns { success, manifest } or { success: false, error }
+
+Add IPC channel: library:import(filePath, pathMappings)
+
+pathMappings: [{ oldRoot: string, newRoot: string }]
+  Each entry maps an old photo root path to its new location.
+
+Implementation:
+
+  1. Validate the .framelib file:
+     - Can it be opened as a ZIP?
+     - Does manifest.json exist and parse correctly?
+     - Does frame.db exist in the archive?
+     Return { success: false, error } on any failure.
+
+  2. Create pre-import backup (ALWAYS):
+     await backupService.createBackup('pre-import')
+
+  3. Extract to a temp directory:
+     const tmpDir = path.join(os.tmpdir(), 'frame-import-' + Date.now())
+     await fs.mkdir(tmpDir)
+     Use unzipper to extract all entries to tmpDir.
+
+  4. Validate the extracted database:
+     const check = await validateDb(path.join(tmpDir, 'frame.db'))
+     if (!check.valid) {
+       await fs.rm(tmpDir, { recursive: true })
+       return { success: false,
+         error: 'Imported database failed integrity check.' }
+     }
+
+  5. Apply path remappings to extracted database:
+     Open tmpDir/frame.db with better-sqlite3.
+     For each { oldRoot, newRoot } in pathMappings:
+       UPDATE files
+       SET full_path = newRoot || SUBSTR(full_path, LENGTH(oldRoot) + 1)
+       WHERE full_path LIKE oldRoot || '%'
+     Also update: original_path, output_path in burst_sets,
+       output_path in pano_sets, composite_path in burst_sets.
+     Close the database.
+
+  6. Copy extracted database over current:
+     await fs.copyFile(
+       path.join(tmpDir, 'frame.db'), DB_PATH)
+
+  7. Copy thumbcache if present:
+     const thumbSrc = path.join(tmpDir, 'thumbcache')
+     if (await fs.access(thumbSrc).then(() => true).catch(() => false)) {
+       await fs.cp(thumbSrc, THUMBCACHE_DIR,
+         { recursive: true, force: false })  // don't overwrite existing
+     }
+
+  8. Apply settings if present:
+     Read tmpDir/settings.json.
+     Merge into electron-store (don't wholesale replace —
+     preserve any keys not in the import, like window state).
+     Keys to import: tool paths, detection defaults,
+       output folder preferences.
+     Keys to preserve: window bounds, last-used session.
+
+  9. Cleanup temp dir:
+     await fs.rm(tmpDir, { recursive: true })
+
+  10. Return:
+      { success: true,
+        sessionsImported: N,    -- count from manifest
+        filesImported: M,
+        thumbsImported: K }
+
+  11. Caller (renderer) shows success then calls app.relaunch().
+
+═══════════════════════════════════════════════════════════
+PART 5 — EXPORT PANEL UI
+═══════════════════════════════════════════════════════════
+
+Create src/modules/Settings/ExportPanel.vue
+
+Add to SettingsPanel.vue as a new "Library" section,
+above the existing Thumbnail Cache section.
+
+ExportPanel contents:
+
+  Header: "Export Frame Library"
+  Description (12px, text-3 color):
+    "Create a portable backup of your sessions, metadata,
+     and settings. Use this to move Frame to a new Mac or
+     share your library."
+
+  Options:
+    Include thumbnail cache:
+      Toggle (default OFF)
+      Helper text (shown when OFF):
+        "Thumbnails will be regenerated automatically on
+         the new machine. (~X MB)" — populate X from
+         library:getExportSize()
+      Helper text (shown when ON):
+        "Includes all cached thumbnails for faster startup.
+         (~X MB total)"
+      Live size estimate updates as toggle changes.
+
+  Export button:
+    "Export library…"
+    On click:
+      Open save dialog: dialog.showSaveDialog({
+        defaultPath: 'Frame_Export_' +
+          new Date().toISOString().slice(0,10) + '.framelib',
+        filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+      })
+      If cancelled: return
+      Show progress overlay:
+        Spinner + "Exporting… X files"
+        Progress from library:exportProgress IPC events
+      On complete: show success state:
+        "Export complete"
+        File path (clickable — reveals in Finder)
+        File size
+        "Done" button dismisses
+
+  Validation warning (shown if DB check fails on open):
+    Warn box: "Your database may have integrity issues.
+    Run a backup before exporting."
+
+═══════════════════════════════════════════════════════════
+PART 6 — IMPORT PANEL UI
+═══════════════════════════════════════════════════════════
+
+Create src/modules/Settings/ImportPanel.vue
+
+Add to Settings "Library" section, below Export.
+
+ImportPanel contents:
+
+  Header: "Import Frame Library"
+  Description:
+    "Replace your current library with a .framelib export.
+     Your current library will be backed up first."
+
+  Import button:
+    "Import library…"
+    On click: open multi-step import flow (modal overlay)
+
+IMPORT MODAL (5 steps, shown as a stepped modal):
+
+  Step 1 — Select file:
+    Open file dialog:
+      filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+    Call library:getManifest(filePath)
+    If error: show error message, stay on step 1
+    On success: advance to step 2
+
+  Step 2 — Summary:
+    Show manifest details:
+      "This library contains:"
+      N sessions · M photos · exported [date]
+      "From: [hostname] on [platform]"
+    Warning box:
+      "Importing will replace your current Frame library.
+       A backup of your current library will be created
+       automatically before import."
+    [Back]  [Continue →]
+
+  Step 3 — Path remapping (only if needed):
+    For each photoRoot in manifest.photoRoots:
+      Check if path exists on current machine:
+        await window.api.invoke('fs:pathExists', root)
+      If exists: show as ✓ green "Found" — no action needed
+      If missing: show as ⚠ amber with folder picker:
+        "[old path]"
+        "→ [Pick new location]" button
+        Opens directory picker, stores selection
+      "Skip" link: marks this root as skipped
+        (files from this root will have broken paths
+         but import will proceed)
+    If all roots are found: show "All photo locations found ✓"
+      and skip directly to step 4.
+    [Back]  [Continue →] (disabled until all missing roots
+      have either a mapping or are explicitly skipped)
+
+  Step 4 — Confirmation:
+    Summary of what will happen:
+      "Ready to import:"
+      ✓ N sessions, M photos
+      ✓ [N thumbnail files] (if included in archive)
+      ✓ Settings from [hostname]
+      ✓ Your current library will be backed up first
+      [list any skipped roots as ⚠ warnings]
+    [Back]  [Import and restart]
+
+  Step 5 — Progress:
+    "Importing library…"
+    Steps with checkmarks as each completes:
+      ○ → ✓  Creating backup of current library
+      ○ → ✓  Extracting archive
+      ○ → ✓  Validating database
+      ○ → ✓  Applying path remappings
+      ○ → ✓  Copying files
+      ○ → ✓  Updating settings
+    On success:
+      "Import complete! Frame will restart now."
+      Auto-restart after 2 seconds (call app.relaunch then app.exit)
+    On error:
+      Show error message
+      "Your original library has been preserved as a backup."
+      [Close]
+
+═══════════════════════════════════════════════════════════
+PART 7 — FILE ASSOCIATION
+═══════════════════════════════════════════════════════════
+
+In package.json electron-builder config, add file association:
+
+  "fileAssociations": [
+    {
+      "ext": "framelib",
+      "name": "Frame Library",
+      "description": "Frame Photo Workflow Library",
+      "icon": "build/icons/icon",
+      "role": "Editor"
+    }
+  ]
+
+In electron/main.js, handle open-file events:
+
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    if (filePath.endsWith('.framelib')) {
+      // Store path, open when window is ready
+      global.pendingImportPath = filePath
+    }
+  })
+
+  // After main window is ready-to-show:
+  if (global.pendingImportPath) {
+    mainWindow.webContents.send(
+      'library:triggerImport', global.pendingImportPath)
+    global.pendingImportPath = null
+  }
+
+In App.vue, listen for the trigger:
+  window.api.on('library:triggerImport', (filePath) => {
+    // Navigate to Settings → Library section
+    // and pre-populate the import modal with filePath
+    this.currentModule = 'Settings'
+    this.$nextTick(() => {
+      this.$refs.settings.openImport(filePath)
+    })
+  })
+
+Also add ipcRenderer listener in preload.js:
+  'library:triggerImport': callback listener
+
+Also add: fs:pathExists(filePath) IPC channel in main.js:
+  → fs.access(filePath).then(() => true).catch(() => false)
+
+═══════════════════════════════════════════════════════════
+VERIFICATION CHECKLIST — E1
+═══════════════════════════════════════════════════════════
+
+□ backupService.js created with all functions
+□ All backup: IPC channels registered in main.js
+□ library:export creates a valid .framelib zip
+□ .framelib contains manifest.json, frame.db, settings.json
+□ manifest.json photoRoots correctly extracted from file paths
+□ Export size estimate shown and updates on toggle
+□ Progress events fire during export
+□ library:getManifest reads manifest without full extract
+□ library:import: pre-import backup created BEFORE any changes
+□ library:import: path remapping updates full_path in files table
+□ library:import: extracted db passes integrity check before copy
+□ Import modal 5 steps all work, back/forward navigation
+□ Path remapping step skipped when all roots exist locally
+□ "Skip" option works — import proceeds with warning
+□ App restarts after successful import
+□ On import error: original library intact (backup preserved)
+□ Double-clicking .framelib file on macOS opens Frame + import
+□ Settings panel shows Library section with Export + Import
+□ No regressions in existing Settings sections
+```
+
+---
+
+### Prompt E2 — Auto-Backup
+
+```
+Add automatic database backup to Frame.
+Run after Prompt E1 is complete — this prompt depends on
+backupService.js created in E1 Part 1.
+
+═══════════════════════════════════════════════════════════
+PART 1 — LAUNCH-TIME BACKUP
+═══════════════════════════════════════════════════════════
+
+In electron/main.js, in the app startup sequence
+(during the splash screen, at the "Initializing database"
+progress step), add:
+
+  const backupService = require('./services/backupService')
+  const Store = require('electron-store')
+  const store = new Store()
+
+  async function runAutoBackup() {
+    // Check if auto-backup is enabled (default: true)
+    const enabled = store.get('autoBackup.enabled', true)
+    if (!enabled) return { skipped: true, reason: 'disabled' }
+
+    // Check if we already backed up today
+    const backups = await backupService.listBackups()
+    const today   = new Date().toISOString().slice(0, 10)  // YYYY-MM-DD
+    const regular = backups.filter(b =>
+      /^frame-\d{4}-\d{2}-\d{2}-\d{4}\.db$/.test(b.filename))
+    const alreadyToday = regular.some(b => b.filename.startsWith('frame-' + today))
+
+    if (alreadyToday) {
+      return { skipped: true, reason: 'already backed up today' }
+    }
+
+    // Check that frame.db exists (first launch has no db yet)
+    const dbExists = await require('fs/promises')
+      .access(backupService.DB_PATH)
+      .then(() => true).catch(() => false)
+    if (!dbExists) return { skipped: true, reason: 'no database yet' }
+
+    // Create the backup
+    const backup = await backupService.createBackup()
+
+    // Prune old backups (keep 7 regular backups)
+    await backupService.pruneBackups(7)
+
+    return { skipped: false, backup }
+  }
+
+Call runAutoBackup() during startup, between the database
+init step and the "Loading sessions" step.
+
+If backup fails: log the error but DO NOT prevent app startup.
+The app should always start even if backup fails.
+
+If backup succeeds: log to console (dev) — no UI notification.
+Backup is silent and automatic. Users see it only in Settings.
+
+═══════════════════════════════════════════════════════════
+PART 2 — SETTINGS PANEL — LIBRARY SECTION
+═══════════════════════════════════════════════════════════
+
+In SettingsPanel.vue, in the Library section created by E1,
+add a "Auto-backup" subsection BELOW the Export/Import panels.
+
+─── AUTO-BACKUP SUBSECTION ───────────────────────────────
+
+Header: "Auto-backup"
+
+Toggle row:
+  Label: "Back up database on launch"
+  Sublabel (12px, text-3): 
+    "A copy of your session database is saved each time
+     Frame starts. Keeps the last 7 days."
+  Toggle: default ON
+  On change: store.set('autoBackup.enabled', value)
+             via new IPC channel: settings:set(key, value)
+
+Note row (below toggle, always visible):
+  Icon: ⓘ (info circle)  
+  Text (11px, text-3, italic):
+    "Frame backs up your session database automatically.
+     Your photo files are not included — back those up
+     separately using Time Machine or your preferred
+     backup solution."
+
+─── RECENT BACKUPS ───────────────────────────────────────
+
+Subsection: "Recent backups"
+
+Right-aligned link: "Open folder ↗"
+  On click: window.api.invoke('backup:openFolder')
+
+Backup list:
+  Load from backup:list() on Settings panel mount.
+  Refresh after any restore or delete action.
+
+  If no backups yet:
+    Muted text: "No backups yet. Frame will create one
+    on next launch."
+
+  If backups exist, show list (max 7 items):
+
+    Each backup row:
+      Left:
+        Date/time (formatted): "Today, 8:34 AM"
+          or "Yesterday, 9:12 AM"
+          or "Jun 14, 10:05 AM"
+        Filename in text-3 color: "frame-2026-07-17-0834.db"
+      Right:
+        File size: "2.1 MB" (text-3)
+        "Restore" button (small, secondary style)
+        "Delete" button (small, danger-muted style — 
+          color: var(--color-delete-hover), no background)
+
+    Date formatting function:
+      const now = new Date()
+      const d   = new Date(backup.createdAt)
+      const diffDays = Math.floor((now - d) / 86400000)
+      if (diffDays === 0) return 'Today, ' + formatTime(d)
+      if (diffDays === 1) return 'Yesterday, ' + formatTime(d)
+      return formatDate(d) + ', ' + formatTime(d)
+
+    File size formatting:
+      if bytes < 1024*1024: return (bytes/1024).toFixed(1) + ' KB'
+      return (bytes/1024/1024).toFixed(1) + ' MB'
+
+─── RESTORE FLOW ─────────────────────────────────────────
+
+On "Restore" click:
+
+  Show confirmation modal:
+
+    Title: "Restore from backup?"
+    Body:
+      "This will replace your current Frame library with
+       the backup from [formatted date/time].
+
+       Any changes made since then will be lost.
+
+       Your current library will be saved as an additional
+       backup before restoring."
+    Buttons: [Cancel]  [Restore and restart]
+
+  On confirm:
+    Show inline progress: "Restoring…"
+    Call backup:restore(backupPath)
+    On success: "Restarting Frame…" then app restarts
+    On error: show error message, leave library intact
+
+─── DELETE FLOW ──────────────────────────────────────────
+
+On "Delete" click:
+
+  Inline confirmation (no modal — small action):
+    Replace the row buttons with:
+      "Delete this backup?" [Yes, delete]  [Cancel]
+    On confirm: call backup:delete(backupPath)
+    Remove row from list immediately (optimistic update)
+    On error: restore the row, show toast error
+
+═══════════════════════════════════════════════════════════
+PART 3 — SETTINGS IPC CHANNEL
+═══════════════════════════════════════════════════════════
+
+Add IPC channel: settings:set(key, value)
+  Uses electron-store: store.set(key, value)
+  Returns { success }
+
+Add IPC channel: settings:get(key, defaultValue)
+  Uses electron-store: store.get(key, defaultValue)
+  Returns { value }
+
+These are general-purpose settings channels. If they already
+exist from Phase 4A, verify they match this signature and
+update if needed. They are used by the auto-backup toggle
+and may be used by other settings in future.
+
+═══════════════════════════════════════════════════════════
+VERIFICATION CHECKLIST — E2
+═══════════════════════════════════════════════════════════
+
+□ Auto-backup runs silently on app launch
+□ Backup is skipped if one already exists for today
+□ Backup is skipped on very first launch (no db yet)
+□ App starts normally even if backup throws an error
+□ Backups appear in ~/.frame/backups/ with correct filenames
+□ Old backups pruned — only 7 regular backups kept
+□ Settings panel shows auto-backup toggle
+□ Toggle persists across app restarts
+□ Backup list loads and displays correctly
+□ Date/time and file size formatted correctly
+□ "Open folder" reveals backups directory in Finder
+□ Restore: confirmation modal shown before any action
+□ Restore: pre-restore backup created before overwrite
+□ Restore: app restarts after successful restore
+□ Restore: on error, library is intact
+□ Delete: inline confirmation, no modal
+□ Delete: row removed from list immediately
+□ Note about photo files NOT being included is visible
+□ No regressions in E1 export/import functionality
+□ settings:set and settings:get channels work correctly
+```
