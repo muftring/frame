@@ -15,9 +15,9 @@ Phases 11–14 (Panoramas, Bursts, Smart Albums, Sequence Detection) build in pr
 Export/Import feature fully designed but Claude Code prompts not yet written — needed within 4–6 weeks for planned Mac migration. Blog/paper outline drafted in full; writing not yet started.
 
 **Next actions:**
-- [ ] Complete Phases 11–14 in Claude Code
-- [ ] Complete Branding B1 and B2, verify in app
-- [ ] Run Export/Import + Auto-Backup prompts (E1, E2) in Claude Code
+- [x] Complete Phases 11–14 in Claude Code
+- [x] Complete Branding B1 and B2, verify in app
+- [x] Run Export/Import + Auto-Backup prompts (E1, E2) in Claude Code
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] Mac migration using Export/Import
 
@@ -243,7 +243,7 @@ Built during v1.0 development. Integrates with:
 
 ---
 
-### Phase 11 — Unified Sequence Detection Schema 📝
+### Phase 11 — Unified Sequence Detection Schema ✅
 | Prompt | Description |
 |---|---|
 | 11A | `pano_sets` + `burst_sets` tables. File columns: pano_set_id, burst_set_id, pano_frame_order, burst_frame_order, tags, trashed_at. Seeds pano-candidate (N) and burst-candidate (U) tags. All pano:/burst:/tag: IPC channels. |
@@ -272,7 +272,7 @@ Built during v1.0 development. Integrates with:
 
 ---
 
-### Phase 12 — Panorama UI 📝
+### Phase 12 — Panorama UI ✅
 | Prompt | Description |
 |---|---|
 | 12A | Sorter pano integration — PANO badge, blue set border, pano info bar above action bar with "View set →" link |
@@ -290,7 +290,7 @@ CLI:   nona, enblend, autooptimiser (same dir as hugin or PATH)
 
 ---
 
-### Phase 13 — Burst UI 📝
+### Phase 13 — Burst UI ✅
 | Prompt | Description |
 |---|---|
 | 13A | Sorter burst integration — BRST badge (orange), burst set border, burst info bar, BurstCompareView.vue with synchronized zoom grid, "Keep best delete rest" action |
@@ -310,7 +310,7 @@ Win:   C:\Program Files\ffmpeg\bin\ffmpeg.exe
 
 ---
 
-### Phase 14 — Settings Integration 📝
+### Phase 14 — Settings Integration ✅
 | Prompt | Description |
 |---|---|
 | 14A | Settings panel additions: sequence detection defaults (all knobs), composite defaults, ffmpeg/Hugin paths, default output folders. electron-store key: "sequenceDetectionOptions" |
@@ -338,11 +338,47 @@ Background: #1a1a1a (contained mark), transparent (mark only)
 
 ---
 
-### Branding B — Home Screen & UI Polish 🔨
+### Branding B — Home Screen & UI Polish ✅
 | Prompt | Description |
 |---|---|
 | B1 | HomeModule.vue redesign — top bar (logo + wordmark + session pill + version), pipeline bar (5 clickable stages), session card grid (3-col), SessionCard.vue component, library stats row, empty state |
 | B2 | App-wide polish — macOS traffic lights, module transitions, global toast system (provide/inject), ⌘1-7 + ⌘, shortcuts, EmptyState.vue component, micro-interactions, typography, window state persistence |
+
+---
+
+### Export / Import — `.framelib` format 💭
+
+**Priority:** High — needed for Mac migration in 4-6 weeks.
+
+**Design:**
+
+Export creates `Frame_Export_[date].framelib` (a zip containing):
+```
+manifest.json      version, export date, hostname, photo root paths
+frame.db           complete SQLite database
+thumbcache/        all thumbnails (optional — include checkbox + size warning)
+settings.json      electron-store config
+```
+
+Import flow (5 steps):
+1. Select `.framelib` file
+2. Show summary: N sessions, M photos, export date
+3. **Path remapping** — detect paths that don't resolve, ask user to map each old root to new location
+4. Confirmation: "Import will replace your current Frame library"
+5. Progress: copy db → update all `full_path` values → copy thumbcache → write settings → restart
+
+**Approach A (chosen for timeline):** Path remapping on import. One-time fix when paths change. Simpler than Approach B.
+
+**Approach B (v2.0 consideration):** Relative paths stored relative to a library root. Eliminates path remapping entirely but requires schema change.
+
+**`.framelib` file association:** Register in electron-builder so double-clicking opens Frame and triggers import.
+
+**Claude Code prompt:** Not yet written. When ready, covers:
+- `library:export(options)` IPC channel
+- `library:import(filePath)` IPC channel with path remapping UI
+- ExportPanel.vue and ImportPanel.vue components
+- electron-builder file association config
+- Backup of existing db before overwrite (`frame.db.backup.[timestamp]`)
 
 ---
 
