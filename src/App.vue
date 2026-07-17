@@ -68,7 +68,7 @@
       </div>
     </main>
 
-    <SettingsPanel v-if="showSettings" :settings="settings" @close="showSettings = false" />
+    <SettingsPanel v-if="showSettings" ref="settings" :settings="settings" @close="showSettings = false" />
 
     <SessionComplete
       v-if="showSessionComplete"
@@ -204,10 +204,17 @@ export default {
       this.sessionCompleteData = data
       this.showSessionComplete = true
     })
+    this._triggerImportCleanup = window.api.on('library:triggerImport', (filePath) => {
+      this.showSettings = true
+      this.$nextTick(() => {
+        this.$refs.settings.openImport(filePath)
+      })
+    })
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleGlobalKey)
     if (this._completeCleanup) this._completeCleanup()
+    if (this._triggerImportCleanup) this._triggerImportCleanup()
   },
   methods: {
     selectModule(id) {

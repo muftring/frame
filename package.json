@@ -11,9 +11,11 @@
     "icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "better-sqlite3": "^12.11.1",
     "electron-store": "^11.0.2",
     "sharp": "^0.33.5",
+    "unzipper": "^0.12.5",
     "vue": "^3.5.13"
   },
   "devDependencies": {
@@ -38,6 +40,15 @@
       "node_modules/sharp/**/*",
       "node_modules/@img/**/*",
       "node_modules/better-sqlite3/**/*"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "framelib",
+        "name": "Frame Library",
+        "description": "Frame Photo Workflow Library",
+        "icon": "build/icons/icon",
+        "role": "Editor"
+      }
     ],
     "directories": {
       "output": "dist/electron"

@@ -17,6 +17,13 @@ function getDb() {
   return db
 }
 
+function closeDb() {
+  if (db) {
+    db.close()
+    db = null
+  }
+}
+
 function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -362,6 +369,16 @@ function fileCount() {
     return db.prepare('SELECT COUNT(*) AS n FROM files').get().n
   } catch {
     return 0
+  }
+}
+
+function distinctFullPaths() {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT DISTINCT full_path FROM files WHERE full_path IS NOT NULL')
+      .all().map(r => r.full_path)
+  } catch {
+    return []
   }
 }
 
@@ -1295,6 +1312,8 @@ module.exports = {
   sessionUpdatePipeline,
   sessionCount,
   fileCount,
+  distinctFullPaths,
+  closeDb,
   fileCountByStatus,
   panoCountSets,
   burstCountComposited,

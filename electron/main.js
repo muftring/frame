@@ -7,6 +7,8 @@ const toolLauncher = require('./services/toolLauncher')
 const uploadService = require('./services/uploadService')
 const sessionStore = require('./services/sessionStore')
 const sequenceDetector = require('./services/sequenceDetector')
+const backupService = require('./services/backupService')
+const libraryService = require('./services/libraryService')
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/muftring/frame'
@@ -16,8 +18,23 @@ app.setName('Frame')
 let mainWindow = null
 let tray = null
 let splash = null
+let pendingImportPath = null
 const MIN_SPLASH_MS = 1400
 const MAX_SPLASH_MS = 4000
+
+// macOS fires 'open-file' (e.g. double-clicking a .framelib) before
+// app.whenReady() resolves, so the handler must be registered up front and
+// the path stashed until the main window exists and can receive it.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  if (filePath.endsWith('.framelib')) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('library:triggerImport', filePath)
+    } else {
+      pendingImportPath = filePath
+    }
+  }
+})
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-file', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
@@ -160,6 +177,24 @@ ipcMain.handle('dialog:openPreset', async () => {
   return result.filePaths[0]
 })
 
+ipcMain.handle('dialog:saveFramelib', async (_, defaultPath) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath,
+    filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+  })
+  if (result.canceled) return null
+  return result.filePath
+})
+
+ipcMain.handle('dialog:openFramelib', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
 ipcMain.handle('dialog:openDarktableStyle', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -259,6 +294,78 @@ ipcMain.handle('album:update', (_, albumId, fields) => sessionStore.albumUpdate(
 ipcMain.handle('album:delete', (_, albumId) => sessionStore.albumDelete(albumId))
 ipcMain.handle('album:preview', (_, rules, scope, sessionId) => sessionStore.albumPreview(rules, scope, sessionId))
 ipcMain.handle('album:resolveFiles', (_, albumId) => sessionStore.albumResolveFiles(albumId))
+
+ipcMain.handle('backup:create', async () => {
+  try {
+    const backup = await backupService.createBackup()
+    return { success: true, backup }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+ipcMain.handle('backup:list', () => backupService.listBackups())
+ipcMain.handle('backup:restore', async (_, backupPath) => {
+  try {
+    await backupService.restoreBackup(backupPath)
+    app.relaunch()
+    app.exit(0)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+ipcMain.handle('backup:delete', async (_, backupPath) => {
+  try {
+    await fsNode.unlink(backupPath)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+ipcMain.handle('backup:openFolder', async () => {
+  await fsNode.mkdir(backupService.BACKUPS_DIR, { recursive: true })
+  shell.openPath(backupService.BACKUPS_DIR)
+  return { success: true }
+})
+
+ipcMain.handle('library:validateCurrentDb', () => backupService.validateDb(backupService.DB_PATH))
+
+ipcMain.handle('library:getExportSize', (_, includeThumbs) => libraryService.getExportSize(includeThumbs))
+
+ipcMain.handle('library:export', async (event, options) => {
+  const store = await getStore()
+  return libraryService.exportLibrary(options, store.store, (progress) => {
+    event.sender.send('library:exportProgress', progress)
+  })
+})
+
+ipcMain.handle('library:getManifest', (_, filePath) => libraryService.getManifest(filePath))
+
+ipcMain.handle('library:import', async (event, filePath, pathMappings) => {
+  const result = await libraryService.importLibrary(filePath, pathMappings, (step) => {
+    event.sender.send('library:importProgress', { step })
+  })
+  if (result.success && result.importedSettings) {
+    const PRESERVE_KEYS = new Set(['windowBounds'])
+    try {
+      const store = await getStore()
+      for (const [key, value] of Object.entries(result.importedSettings)) {
+        if (PRESERVE_KEYS.has(key)) continue
+        store.set(key, value)
+      }
+    } catch { /* settings merge is best-effort */ }
+  }
+  delete result.importedSettings
+  return result
+})
+
+ipcMain.handle('fs:pathExists', (_, filePath) =>
+  fsNode.access(filePath).then(() => true).catch(() => false))
+
+ipcMain.handle('app:relaunch', () => {
+  app.relaunch()
+  app.exit(0)
+})
 
 let _store = null
 async function getStore() {
@@ -547,6 +654,11 @@ app.whenReady().then(async () => {
     splash = null
   }
   win.show()
+
+  if (pendingImportPath) {
+    win.webContents.send('library:triggerImport', pendingImportPath)
+    pendingImportPath = null
+  }
 })
 
 app.on('window-all-closed', () => {
