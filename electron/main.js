@@ -367,6 +367,32 @@ ipcMain.handle('app:relaunch', () => {
   app.exit(0)
 })
 
+// electron-store is an ESM-only package under this project's CJS main
+// process (same issue as archiver@8), so this reuses the getStore()
+// singleton below rather than `require('electron-store')` directly.
+async function runAutoBackup() {
+  try {
+    const store = await getStore()
+    const enabled = store.get('autoBackup.enabled', true)
+    if (!enabled) return { skipped: true, reason: 'disabled' }
+
+    const backups = await backupService.listBackups()
+    const today = new Date().toISOString().slice(0, 10)
+    const regular = backups.filter(b => /^frame-\d{4}-\d{2}-\d{2}-\d{4}\.db$/.test(b.filename))
+    const alreadyToday = regular.some(b => b.filename.startsWith('frame-' + today))
+    if (alreadyToday) return { skipped: true, reason: 'already backed up today' }
+
+    const dbExists = await fsNode.access(backupService.DB_PATH).then(() => true).catch(() => false)
+    if (!dbExists) return { skipped: true, reason: 'no database yet' }
+
+    const backup = await backupService.createBackup()
+    await backupService.pruneBackups(7)
+    return { skipped: false, backup }
+  } catch (err) {
+    return { skipped: true, reason: 'error: ' + err.message }
+  }
+}
+
 let _store = null
 async function getStore() {
   if (!_store) {
@@ -391,6 +417,25 @@ ipcMain.handle('store:set', async (_, key, value) => {
     store.set(key, value)
   } catch {
     // ignore store errors
+  }
+})
+
+ipcMain.handle('settings:get', async (_, key, defaultValue) => {
+  try {
+    const store = await getStore()
+    return { value: store.get(key, defaultValue) }
+  } catch {
+    return { value: defaultValue }
+  }
+})
+
+ipcMain.handle('settings:set', async (_, key, value) => {
+  try {
+    const store = await getStore()
+    store.set(key, value)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
   }
 })
 
@@ -636,6 +681,15 @@ app.whenReady().then(async () => {
   await imageProcessor.ensureCacheDir()
   await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
   await setSplashProgress(65)
+
+  // Backup failure must never block startup — runAutoBackup() already
+  // swallows its own errors and returns { skipped: true, reason }.
+  const backupResult = await runAutoBackup()
+  if (backupResult.skipped) {
+    console.log('[auto-backup] skipped:', backupResult.reason)
+  } else {
+    console.log('[auto-backup] created', backupResult.backup.filename)
+  }
 
   // Renderer + preload are already loaded by the time createWindow()'s
   // ready-to-show promise resolved above, so there's no separate cache

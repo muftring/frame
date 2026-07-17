@@ -262,10 +262,12 @@
             </div>
           </section>
 
-          <!-- Library (Export / Import) -->
+          <!-- Library (Export / Import / Auto-backup) -->
           <section class="settings-section">
             <ExportPanel />
             <ImportPanel ref="importPanel" />
+            <div class="library-divider"></div>
+            <BackupPanel />
           </section>
 
           <!-- Thumbnail cache -->
@@ -385,10 +387,11 @@ const FOCAL_TOLERANCE_OFF = 99999
 
 import ExportPanel from './ExportPanel.vue'
 import ImportPanel from './ImportPanel.vue'
+import BackupPanel from './BackupPanel.vue'
 
 export default {
   name: 'SettingsPanel',
-  components: { ExportPanel, ImportPanel },
+  components: { ExportPanel, ImportPanel, BackupPanel },
   props: {
     settings: { type: Object, required: true }
   },
@@ -595,6 +598,11 @@ export default {
 
 .settings-section {
   margin-bottom: 24px;
+}
+
+.library-divider {
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
 }
 
 .settings-section h4 {
