@@ -8,6 +8,49 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 ---
 
+## Current Status
+
+Phases 11–14 (Panoramas, Bursts, Smart Albums, Sequence Detection) build in progress with Claude Code — targeting v1.1.0. Branding Prompt A (logo, icons, splash screen) complete and looking great. Branding Prompt B (home screen redesign, UI polish) in progress — B1 and B2 handed to Claude Code, checking results between prompts.
+
+Export/Import feature fully designed but Claude Code prompts not yet written — needed within 4–6 weeks for planned Mac migration. Blog/paper outline drafted in full; writing not yet started.
+
+**Next actions:**
+- [ ] Complete Phases 11–14 in Claude Code
+- [ ] Complete Branding B1 and B2, verify in app
+- [ ] Write Export/Import Claude Code prompt
+- [ ] Begin blog/paper Part 1 in chat
+- [ ] Mac migration using Export/Import
+
+---
+
+## Decisions Log
+
+*Reverse-chronological. One line per decision + rationale.*
+
+| Date | Decision | Rationale |
+|---|---|---|
+| 2026-07 | Chose Times New Roman Regular Italic (J6) for logomark F | Most distinctive of 12 options explored; italic echoes strip tilt rhythm; regular weight lets bright rim do the lifting |
+| 2026-07 | Chose H3 strip treatment — 5 fading gold strips + dark gap + #ffd966 rim on F | 5 strips fill the icon completely; fading opacity reads as negative film; I3 rim separates F from strips without being decorative |
+| 2026-07 | Home screen redesigned: session cards + pipeline bar + library stats | Original home was a plain list — not intuitive, bland for new users; redesign makes pipeline visible and rewards continued use with growing stats |
+| 2026-07 | Kept gold/dark color palette (#c9a84c on #1a1a1a) — no color scheme change | Strong combination, cinematic, right for a photography tool; changing it would require rebuilding all token references for little gain |
+| 2026-07 | Blog/paper format: long-form narrative + companion prompt appendix | Lets general readers read the story without prompt overwhelm; developers can go deep in companion doc |
+| 2026-07 | Export/Import: Approach A (path remapping on import) for Mac migration | Approach B (relative paths) is better long-term but requires schema change; Approach A implementable in one Claude Code session within the 4–6 week window |
+| 2026-07 | Publish module renamed from Upload | "Publish" correctly implies intent; "Upload" implied mechanics; rename done by Claude Code post-v1.0 |
+| 2026-06 | B&W conversion stays in Darktable, not Frame | True B&W from RAW requires channel mixing, local contrast, grain — Darktable's Color Calibration module is professional-grade; Frame adds tag/preview/handoff workflow only |
+| 2026-06 | Panorama stitching via Hugin, not native engine | Homography + multi-band blending is substantial math; Hugin is free, excellent, and already integrates via CLI; Frame handles selection, grouping, and handoff |
+| 2026-06 | Burst composite via ffmpeg lighten blend + Hugin alignment (optional) | ffmpeg lighten mode works well for colored jerseys on green field; Hugin alignment available for cleaner results; staged complexity matches use cases |
+| 2026-06 | Single-pass sequence:detectGroups returns panoramas + bursts | Panorama and burst detection share the same run-building logic; two outputs from one scan is more efficient and cleaner than two separate scans |
+| 2026-06 | Burst fast-reject: shutter > 1/500s OR gap < 1.5s → not a panorama | Lacrosse bursts at 3fps (333ms gaps, 1/500–1/1000s shutter) fail both criteria immediately — solves the sports burst / panorama ambiguity problem |
+| 2026-06 | Delete behavior: Option A — database-only soft delete | Files stay on disk during sort; un-delete is instant; destructive action is explicit and informed (disk space shown); matches Lightroom's "reject" model |
+| 2026-06 | Session model as central organizing concept | Without sessions, every launch is from scratch; sessions enable resume, history, library stats, and pipeline state tracking |
+| 2026-06 | Frame as orchestrator, not replacement for Darktable/RawTherapee | Professional RAW tools took decades to build; Frame's value is the pipeline connection, not competing with them |
+| 2026-05 | Vue 3 Options API (not Composition API) | Developer knows Options API; wants to read and understand the code Claude Code produces; Composition API would be opaque |
+| 2026-05 | Electron + Vue 3 + Vite + better-sqlite3 + sharp | Real filesystem access needed (File System Access API too limited); SQLite for session persistence; sharp for thumbnail generation |
+| 2026-05 | HTML prototypes (PhotoTriage, PhotoSorter) before Electron | Browser sandbox enabled rapid UI iteration; prototypes clarified requirements before committing to Electron complexity |
+| 2026-04 | Nikon D80 Lacrosse Photography Field Guide as first artifact | Documenting camera settings for personal use revealed the shape of the software problem — guide became seed content for Frame's Process module tips |
+
+---
+
 ## Table of Contents
 
 1. [Technology Stack](#technology-stack)
