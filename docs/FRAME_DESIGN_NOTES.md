@@ -10,14 +10,15 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 ## Current Status
 
-Phases 11–14 (Panoramas, Bursts, Smart Albums, Sequence Detection) build in progress with Claude Code — targeting v1.1.0. Branding Prompt A (logo, icons, splash screen) complete and looking great. Branding Prompt B (home screen redesign, UI polish) in progress — B1 and B2 handed to Claude Code, checking results between prompts.
+Phases 11–14 (Panoramas, Bursts, Smart Albums, Sequence Detection) complete and merged — v1.1.0. Branding Prompt A (logo, icons, splash screen) and Branding Prompt B (home screen redesign, UI polish) both complete and merged — v1.2.0.
 
-Export/Import feature fully designed but Claude Code prompts not yet written — needed within 4–6 weeks for planned Mac migration. Blog/paper outline drafted in full; writing not yet started.
+Export/Import + Auto-Backup (E1, E2) built and verified in Claude Code — `.framelib` export/import, path remapping, file association, and launch-time auto-backup with restore/delete UI all working live. Open in PR #9, not yet merged. Blog/paper outline drafted in full; writing not yet started.
 
 **Next actions:**
 - [x] Complete Phases 11–14 in Claude Code
 - [x] Complete Branding B1 and B2, verify in app
 - [x] Run Export/Import + Auto-Backup prompts (E1, E2) in Claude Code
+- [ ] Merge PR #9 (E1 + E2)
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] Mac migration using Export/Import
 
@@ -346,7 +347,7 @@ Background: #1a1a1a (contained mark), transparent (mark only)
 
 ---
 
-### Export / Import — `.framelib` format 💭
+### Export / Import — `.framelib` format ✅
 
 **Priority:** High — needed for Mac migration in 4-6 weeks.
 
@@ -373,12 +374,12 @@ Import flow (5 steps):
 
 **`.framelib` file association:** Register in electron-builder so double-clicking opens Frame and triggers import.
 
-**Claude Code prompt:** Not yet written. When ready, covers:
+**Claude Code prompt:** Built as Prompt E1, PR #9 (not yet merged). Covers:
 - `library:export(options)` IPC channel
 - `library:import(filePath)` IPC channel with path remapping UI
 - ExportPanel.vue and ImportPanel.vue components
 - electron-builder file association config
-- Backup of existing db before overwrite (`frame.db.backup.[timestamp]`)
+- Backup of existing db before overwrite (handled by the shared `backupService.js`, also used by Prompt E2's auto-backup)
 
 ---
 
@@ -549,7 +550,7 @@ Lacrosse bursts at 3fps (D80 CH mode) have ~333ms inter-frame gaps and shutter s
 
 ## Planned but Not Yet Built
 
-### Export / Import — `.framelib` format 💭
+### Export / Import — `.framelib` format ✅
 
 **Priority:** High — needed for Mac migration in 4-6 weeks.
 
@@ -576,12 +577,12 @@ Import flow (5 steps):
 
 **`.framelib` file association:** Register in electron-builder so double-clicking opens Frame and triggers import.
 
-**Claude Code prompt:** Not yet written. When ready, covers:
+**Claude Code prompt:** Built as Prompt E1, PR #9 (not yet merged). Covers:
 - `library:export(options)` IPC channel
 - `library:import(filePath)` IPC channel with path remapping UI
 - ExportPanel.vue and ImportPanel.vue components
 - electron-builder file association config
-- Backup of existing db before overwrite (`frame.db.backup.[timestamp]`)
+- Backup of existing db before overwrite (handled by the shared `backupService.js`, also used by Prompt E2's auto-backup)
 
 ---
 
@@ -844,8 +845,9 @@ Deferred until user base exists. For now: Option 4 hybrid docs.
 | Version | What shipped |
 |---|---|
 | v1.0.0 | Core pipeline: Triage, Sort, Edit, Process, Publish (with ArchiVault + iCloud integration) |
-| v1.1.0 | Phases 11-14: Panoramas, Bursts, Smart Albums, Sequence Detection (in progress) |
-| v1.2.0 | Branding A+B: Logo, redesigned home screen, UI polish (in progress) |
+| v1.1.0 | Phases 11-14: Panoramas, Bursts, Smart Albums, Sequence Detection |
+| v1.2.0 | Branding A+B: Logo, redesigned home screen, UI polish |
+| v1.3.0 | E1+E2: `.framelib` export/import, path remapping, launch-time auto-backup with restore/delete UI (PR #9, in progress) |
 | v2.0 | Planned: relative paths, theme system, in-app help |
 
 ---
