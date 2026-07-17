@@ -262,6 +262,14 @@
             </div>
           </section>
 
+          <!-- Library (Export / Import / Auto-backup) -->
+          <section class="settings-section">
+            <ExportPanel />
+            <ImportPanel ref="importPanel" />
+            <div class="library-divider"></div>
+            <BackupPanel />
+          </section>
+
           <!-- Thumbnail cache -->
           <section class="settings-section">
             <h4>Thumbnail Cache</h4>
@@ -377,8 +385,13 @@ const SEQ_DEFAULTS = {
 // approach SequenceDetectionModal.vue uses for its own focal-length toggle.
 const FOCAL_TOLERANCE_OFF = 99999
 
+import ExportPanel from './ExportPanel.vue'
+import ImportPanel from './ImportPanel.vue'
+import BackupPanel from './BackupPanel.vue'
+
 export default {
   name: 'SettingsPanel',
+  components: { ExportPanel, ImportPanel, BackupPanel },
   props: {
     settings: { type: Object, required: true }
   },
@@ -446,6 +459,9 @@ export default {
     window.removeEventListener('keydown', this._keyHandler)
   },
   methods: {
+    openImport(filePath) {
+      this.$refs.importPanel.openImport(filePath)
+    },
     async saveSeqOptions() {
       const effective = {
         ...this.seqOptions,
@@ -582,6 +598,11 @@ export default {
 
 .settings-section {
   margin-bottom: 24px;
+}
+
+.library-divider {
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
 }
 
 .settings-section h4 {

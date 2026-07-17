@@ -7,6 +7,8 @@ const toolLauncher = require('./services/toolLauncher')
 const uploadService = require('./services/uploadService')
 const sessionStore = require('./services/sessionStore')
 const sequenceDetector = require('./services/sequenceDetector')
+const backupService = require('./services/backupService')
+const libraryService = require('./services/libraryService')
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/muftring/frame'
@@ -16,8 +18,23 @@ app.setName('Frame')
 let mainWindow = null
 let tray = null
 let splash = null
+let pendingImportPath = null
 const MIN_SPLASH_MS = 1400
 const MAX_SPLASH_MS = 4000
+
+// macOS fires 'open-file' (e.g. double-clicking a .framelib) before
+// app.whenReady() resolves, so the handler must be registered up front and
+// the path stashed until the main window exists and can receive it.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  if (filePath.endsWith('.framelib')) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('library:triggerImport', filePath)
+    } else {
+      pendingImportPath = filePath
+    }
+  }
+})
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-file', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
@@ -160,6 +177,24 @@ ipcMain.handle('dialog:openPreset', async () => {
   return result.filePaths[0]
 })
 
+ipcMain.handle('dialog:saveFramelib', async (_, defaultPath) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath,
+    filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+  })
+  if (result.canceled) return null
+  return result.filePath
+})
+
+ipcMain.handle('dialog:openFramelib', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
 ipcMain.handle('dialog:openDarktableStyle', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -260,6 +295,104 @@ ipcMain.handle('album:delete', (_, albumId) => sessionStore.albumDelete(albumId)
 ipcMain.handle('album:preview', (_, rules, scope, sessionId) => sessionStore.albumPreview(rules, scope, sessionId))
 ipcMain.handle('album:resolveFiles', (_, albumId) => sessionStore.albumResolveFiles(albumId))
 
+ipcMain.handle('backup:create', async () => {
+  try {
+    const backup = await backupService.createBackup()
+    return { success: true, backup }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+ipcMain.handle('backup:list', () => backupService.listBackups())
+ipcMain.handle('backup:restore', async (_, backupPath) => {
+  try {
+    await backupService.restoreBackup(backupPath)
+    app.relaunch()
+    app.exit(0)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+ipcMain.handle('backup:delete', async (_, backupPath) => {
+  try {
+    await fsNode.unlink(backupPath)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+ipcMain.handle('backup:openFolder', async () => {
+  await fsNode.mkdir(backupService.BACKUPS_DIR, { recursive: true })
+  shell.openPath(backupService.BACKUPS_DIR)
+  return { success: true }
+})
+
+ipcMain.handle('library:validateCurrentDb', () => backupService.validateDb(backupService.DB_PATH))
+
+ipcMain.handle('library:getExportSize', (_, includeThumbs) => libraryService.getExportSize(includeThumbs))
+
+ipcMain.handle('library:export', async (event, options) => {
+  const store = await getStore()
+  return libraryService.exportLibrary(options, store.store, (progress) => {
+    event.sender.send('library:exportProgress', progress)
+  })
+})
+
+ipcMain.handle('library:getManifest', (_, filePath) => libraryService.getManifest(filePath))
+
+ipcMain.handle('library:import', async (event, filePath, pathMappings) => {
+  const result = await libraryService.importLibrary(filePath, pathMappings, (step) => {
+    event.sender.send('library:importProgress', { step })
+  })
+  if (result.success && result.importedSettings) {
+    const PRESERVE_KEYS = new Set(['windowBounds'])
+    try {
+      const store = await getStore()
+      for (const [key, value] of Object.entries(result.importedSettings)) {
+        if (PRESERVE_KEYS.has(key)) continue
+        store.set(key, value)
+      }
+    } catch { /* settings merge is best-effort */ }
+  }
+  delete result.importedSettings
+  return result
+})
+
+ipcMain.handle('fs:pathExists', (_, filePath) =>
+  fsNode.access(filePath).then(() => true).catch(() => false))
+
+ipcMain.handle('app:relaunch', () => {
+  app.relaunch()
+  app.exit(0)
+})
+
+// electron-store is an ESM-only package under this project's CJS main
+// process (same issue as archiver@8), so this reuses the getStore()
+// singleton below rather than `require('electron-store')` directly.
+async function runAutoBackup() {
+  try {
+    const store = await getStore()
+    const enabled = store.get('autoBackup.enabled', true)
+    if (!enabled) return { skipped: true, reason: 'disabled' }
+
+    const backups = await backupService.listBackups()
+    const today = new Date().toISOString().slice(0, 10)
+    const regular = backups.filter(b => /^frame-\d{4}-\d{2}-\d{2}-\d{4}\.db$/.test(b.filename))
+    const alreadyToday = regular.some(b => b.filename.startsWith('frame-' + today))
+    if (alreadyToday) return { skipped: true, reason: 'already backed up today' }
+
+    const dbExists = await fsNode.access(backupService.DB_PATH).then(() => true).catch(() => false)
+    if (!dbExists) return { skipped: true, reason: 'no database yet' }
+
+    const backup = await backupService.createBackup()
+    await backupService.pruneBackups(7)
+    return { skipped: false, backup }
+  } catch (err) {
+    return { skipped: true, reason: 'error: ' + err.message }
+  }
+}
+
 let _store = null
 async function getStore() {
   if (!_store) {
@@ -284,6 +417,25 @@ ipcMain.handle('store:set', async (_, key, value) => {
     store.set(key, value)
   } catch {
     // ignore store errors
+  }
+})
+
+ipcMain.handle('settings:get', async (_, key, defaultValue) => {
+  try {
+    const store = await getStore()
+    return { value: store.get(key, defaultValue) }
+  } catch {
+    return { value: defaultValue }
+  }
+})
+
+ipcMain.handle('settings:set', async (_, key, value) => {
+  try {
+    const store = await getStore()
+    store.set(key, value)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
   }
 })
 
@@ -530,6 +682,15 @@ app.whenReady().then(async () => {
   await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
   await setSplashProgress(65)
 
+  // Backup failure must never block startup — runAutoBackup() already
+  // swallows its own errors and returns { skipped: true, reason }.
+  const backupResult = await runAutoBackup()
+  if (backupResult.skipped) {
+    console.log('[auto-backup] skipped:', backupResult.reason)
+  } else {
+    console.log('[auto-backup] created', backupResult.backup.filename)
+  }
+
   // Renderer + preload are already loaded by the time createWindow()'s
   // ready-to-show promise resolved above, so there's no separate cache
   // "warm up" step to await here — just keep the splash cadence even.
@@ -547,6 +708,11 @@ app.whenReady().then(async () => {
     splash = null
   }
   win.show()
+
+  if (pendingImportPath) {
+    win.webContents.send('library:triggerImport', pendingImportPath)
+    pendingImportPath = null
+  }
 })
 
 app.on('window-all-closed', () => {
