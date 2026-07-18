@@ -46,7 +46,6 @@
         "ext": "framelib",
         "name": "Frame Library",
         "description": "Frame Photo Workflow Library",
-        "icon": "build/icons/icon",
         "role": "Editor"
       }
     ],
