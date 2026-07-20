@@ -24,7 +24,13 @@ const MARK_SVG_PATH = path.join(REPO_ROOT, 'src/assets/logo/frame-mark-contained
 const OUTPUT_DIR = path.join(REPO_ROOT, 'build/icons')
 const SIZES = [16, 32, 48, 64, 128, 256, 512, 1024]
 
-// Matches the <text> position/size used in frame-mark-contained.svg's F.
+// F_Y/F_FONT_SIZE match the <text> element in frame-mark-contained.svg, but
+// F_X deliberately does NOT match its x="50" — that value positions the SVG
+// <text>, which is center-anchored (text-anchor="middle"). opentype.js's
+// glyph.getPath(x, ...) below has no such anchoring: x is the glyph's LEFT
+// edge. F_X=24 is the left-edge offset that visually centers the glyph at
+// the same x=50 midpoint — don't "fix" this back to 50, that's what caused
+// the F to render shifted right in the first place.
 const F_X = 24
 const F_Y = 72
 const F_FONT_SIZE = 76
