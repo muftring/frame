@@ -159,6 +159,11 @@ function initSchema() {
     db.prepare('ALTER TABLE files ADD COLUMN burst_frame_order INTEGER DEFAULT NULL').run()
   }
 
+  const groupsCols = db.prepare('PRAGMA table_info(event_groups)').all().map(c => c.name)
+  if (!groupsCols.includes('notes')) {
+    db.prepare('ALTER TABLE event_groups ADD COLUMN notes TEXT DEFAULT NULL').run()
+  }
+
   seedDefaultAlbums()
   seedBwCandidatesAlbum()
   seedSequenceAlbums()
@@ -279,7 +284,7 @@ function sessionList() {
   try {
     const db = getDb()
     return db.prepare(`
-      SELECT s.id, s.name, s.status, s.summary, s.created_at, s.updated_at,
+      SELECT s.id, s.name, s.status, s.summary, s.notes, s.created_at, s.updated_at,
              COALESCE(p.current_stage, 'triage')    AS currentStage,
              COALESCE(p.triage_complete,  0)         AS triageComplete,
              COALESCE(p.sort_complete,    0)         AS sortComplete,
@@ -490,6 +495,26 @@ function groupRename(groupId, newLabel) {
   try {
     const db = getDb()
     db.prepare('UPDATE event_groups SET label = ? WHERE id = ?').run(newLabel, groupId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function notesUpdateSession(sessionId, notes) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE sessions SET notes = ?, updated_at = ? WHERE id = ?').run(notes, Date.now(), sessionId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function notesUpdateGroup(groupId, notes) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE event_groups SET notes = ? WHERE id = ?').run(notes, groupId)
     return { success: true }
   } catch (err) {
     return { error: err.message }
@@ -1321,6 +1346,8 @@ module.exports = {
   pipelineSetLastFile,
   groupRename,
   groupList,
+  notesUpdateSession,
+  notesUpdateGroup,
   fileUpsert,
   fileUpdateStatus,
   fileUpdateTags,

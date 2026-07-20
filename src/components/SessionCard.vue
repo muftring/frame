@@ -37,6 +37,16 @@
       <span class="sc-stat"><span class="sc-stat-num">{{ keepRateText }}</span> keep rate</span>
     </div>
 
+    <div class="sc-notes" @click.stop>
+      <MarkdownEditor
+        v-model="localNotes"
+        placeholder="Add notes about this session…"
+        minHeight="48px"
+        :saveStatus="notesSaveStatus"
+        @save="onNotesSave"
+      />
+    </div>
+
     <div class="sc-footer">
       <button v-if="session.status === 'active'" class="sc-btn sc-btn-resume" @click="$emit('resume', session)">Resume →</button>
       <button class="sc-btn sc-btn-view" @click="$emit('view', session)">View</button>
@@ -46,6 +56,8 @@
 </template>
 
 <script>
+import MarkdownEditor from './MarkdownEditor.vue'
+
 const STAGES = [
   { id: 'triage',  doneKey: 'triageComplete' },
   { id: 'sort',    doneKey: 'sortComplete' },
@@ -56,6 +68,7 @@ const STAGES = [
 
 export default {
   name: 'SessionCard',
+  components: { MarkdownEditor },
   props: {
     session: { type: Object, required: true },
     isActive: { type: Boolean, default: false }
@@ -65,7 +78,10 @@ export default {
     return {
       STAGES,
       editing: false,
-      editingName: ''
+      editingName: '',
+      localNotes: this.session.notes || '',
+      notesSaveStatus: '',
+      notesSaveTimer: null
     }
   },
   computed: {
@@ -122,6 +138,16 @@ export default {
       if (!name || name === this.session.name) return
       await window.api.invoke('session:update', this.session.id, { name })
       this.session.name = name
+    },
+    onNotesSave(content) {
+      clearTimeout(this.notesSaveTimer)
+      this.notesSaveStatus = 'saving'
+      this.notesSaveTimer = setTimeout(async () => {
+        await window.api.invoke('notes:updateSession', this.session.id, content)
+        this.session.notes = content
+        this.notesSaveStatus = 'saved'
+        setTimeout(() => { this.notesSaveStatus = '' }, 2000)
+      }, 800)
     }
   }
 }
@@ -245,6 +271,12 @@ export default {
 
 .sc-stat-sep {
   opacity: 0.4;
+}
+
+.sc-notes {
+  padding: 6px 0 8px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 6px;
 }
 
 .sc-footer {

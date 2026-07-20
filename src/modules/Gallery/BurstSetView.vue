@@ -68,6 +68,17 @@
       </div>
     </div>
 
+    <!-- Notes -->
+    <div class="burst-notes">
+      <MarkdownEditor
+        v-model="localNotes"
+        placeholder="Add notes about this burst set…"
+        minHeight="48px"
+        :saveStatus="notesSaveStatus"
+        @save="onNotesSave"
+      />
+    </div>
+
     <!-- Controls -->
     <div class="burst-controls">
       <button class="btn" @click="openCompare">Open burst compare view</button>
@@ -138,10 +149,11 @@
 <script>
 import ImageViewer from './ImageViewer.vue'
 import BurstCompareView from '../Sorter/BurstCompareView.vue'
+import MarkdownEditor from '../../components/MarkdownEditor.vue'
 
 export default {
   name: 'BurstSetView',
-  components: { ImageViewer, BurstCompareView },
+  components: { ImageViewer, BurstCompareView, MarkdownEditor },
   props: {
     burstSetId: { type: Number, required: true },
     activeSession: { type: Object, default: null }
@@ -164,7 +176,10 @@ export default {
       selectedToAdd: [],
       viewerOpen: false,
       viewerIndex: 0,
-      compareOpen: false
+      compareOpen: false,
+      localNotes: '',
+      notesSaveStatus: '',
+      notesSaveTimer: null
     }
   },
   computed: {
@@ -206,6 +221,7 @@ export default {
       if (!this.activeSession) return
       const sets = await window.api.invoke('burst:listSets', this.activeSession.id)
       this.burstSet = Array.isArray(sets) ? sets.find(s => s.id === this.burstSetId) || null : null
+      this.localNotes = this.burstSet?.notes || ''
     },
     async loadFiles() {
       const files = await window.api.invoke('burst:listFiles', this.burstSetId)
@@ -288,6 +304,16 @@ export default {
       await this.loadBurstSet()
       await this.loadFiles()
       this.$emit('set-changed')
+    },
+    onNotesSave(content) {
+      clearTimeout(this.notesSaveTimer)
+      this.notesSaveStatus = 'saving'
+      this.notesSaveTimer = setTimeout(async () => {
+        await window.api.invoke('burst:updateSet', this.burstSetId, { notes: content })
+        this.burstSet = { ...this.burstSet, notes: content }
+        this.notesSaveStatus = 'saved'
+        setTimeout(() => { this.notesSaveStatus = '' }, 2000)
+      }, 800)
     }
   }
 }
@@ -523,6 +549,12 @@ export default {
   gap: 12px;
   font-size: 12px;
   color: var(--text2);
+}
+
+/* ── Notes ────────────────────────────────────── */
+.burst-notes {
+  padding: 12px 20px 0;
+  flex-shrink: 0;
 }
 
 /* ── Controls ─────────────────────────────────── */

@@ -76,6 +76,14 @@
                   class="thumb"
                 />
               </div>
+              <div class="group-note">
+                <MarkdownEditor
+                  :modelValue="groupNotes[group.label] || ''"
+                  @update:modelValue="v => groupNotes[group.label] = v"
+                  placeholder="Add notes about this event group…"
+                  minHeight="40px"
+                />
+              </div>
             </div>
             <div v-if="i < groups.length - 1" class="gap-divider">
               <span class="gap-line"></span>
@@ -127,16 +135,18 @@
 
 <script>
 import EmptyState from '../../components/EmptyState.vue'
+import MarkdownEditor from '../../components/MarkdownEditor.vue'
 
 export default {
   name: 'TriageModule',
-  components: { EmptyState },
+  components: { EmptyState, MarkdownEditor },
   inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
   emits: ['navigate'],
   data() {
     return {
       sourceFolder: null,
       destFolder: null,
+      groupNotes: {},
       gapThreshold: 45,
       scanning: false,
       scanProgress: { current: 0, total: 0 },
@@ -318,6 +328,10 @@ export default {
         const gr = await window.api.invoke('group:create', sessionId, group.label, destDir, group.fileCount, startTs, endTs, i)
         const groupId = gr?.id
         if (!groupId) continue
+        const note = this.groupNotes[group.label]
+        if (note) {
+          await window.api.invoke('notes:updateGroup', groupId, note)
+        }
         for (const file of group.files) {
           await window.api.invoke('file:upsert', sessionId, groupId, {
             filename: file.name,
@@ -551,6 +565,10 @@ export default {
   object-fit: cover;
   border-radius: 4px;
   border: 1px solid var(--border);
+}
+
+.group-note {
+  margin-top: 10px;
 }
 
 .gap-divider {

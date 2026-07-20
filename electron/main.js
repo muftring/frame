@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, dialog, protocol, net, screen } = require('electron')
 const path = require('path')
+const os = require('os')
 const url = require('url')
 const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
@@ -110,7 +111,7 @@ ipcMain.handle('dialog:saveFile', async (_, defaultPath) => {
 })
 
 ipcMain.handle('app:getTempDir', () => {
-  return path.join(app.getPath('home'), '.frame', 'temp')
+  return path.join(os.homedir(), '.frame', 'temp')
 })
 
 ipcMain.handle('app:getVersion', () => {
@@ -118,7 +119,7 @@ ipcMain.handle('app:getVersion', () => {
 })
 
 const fsNode = require('fs/promises')
-const cacheDir = () => path.join(app.getPath('home'), '.frame', 'thumbcache')
+const cacheDir = () => path.join(os.homedir(), '.frame', 'thumbcache')
 
 ipcMain.handle('cache:getInfo', async () => {
   try {
@@ -241,6 +242,32 @@ ipcMain.handle('group:create', (_, sessionId, label, folderPath, fileCount, star
 ipcMain.handle('group:rename', (_, groupId, newLabel) => sessionStore.groupRename(groupId, newLabel))
 ipcMain.handle('group:list', (_, sessionId) => sessionStore.groupList(sessionId))
 ipcMain.handle('pipeline:setLastFile', (_, sessionId, fileId) => sessionStore.pipelineSetLastFile(sessionId, fileId))
+
+ipcMain.handle('notes:updateSession', (_, sessionId, notes) => sessionStore.notesUpdateSession(sessionId, notes))
+ipcMain.handle('notes:updateGroup', (_, groupId, notes) => sessionStore.notesUpdateGroup(groupId, notes))
+
+const JOURNAL_PATH = path.join(os.homedir(), '.frame', 'journal.md')
+
+ipcMain.handle('journal:read', async () => {
+  try {
+    const content = await fsNode.readFile(JOURNAL_PATH, 'utf8')
+    return { content }
+  } catch {
+    return { content: '' }
+  }
+})
+
+ipcMain.handle('journal:write', async (_, content) => {
+  try {
+    await fsNode.mkdir(path.dirname(JOURNAL_PATH), { recursive: true })
+    await fsNode.writeFile(JOURNAL_PATH, content, 'utf8')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('journal:getPath', () => JOURNAL_PATH)
 
 ipcMain.handle('file:upsert', (_, sessionId, groupId, fileData) =>
   sessionStore.fileUpsert(sessionId, groupId, fileData))
@@ -679,7 +706,7 @@ app.whenReady().then(async () => {
   await setSplashProgress(40)
 
   await imageProcessor.ensureCacheDir()
-  await fsNode.mkdir(path.join(app.getPath('home'), '.frame', 'temp'), { recursive: true })
+  await fsNode.mkdir(path.join(os.homedir(), '.frame', 'temp'), { recursive: true })
   await setSplashProgress(65)
 
   // Backup failure must never block startup — runAutoBackup() already
