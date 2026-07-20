@@ -25,7 +25,7 @@ const OUTPUT_DIR = path.join(REPO_ROOT, 'build/icons')
 const SIZES = [16, 32, 48, 64, 128, 256, 512, 1024]
 
 // Matches the <text> position/size used in frame-mark-contained.svg's F.
-const F_X = 50
+const F_X = 24
 const F_Y = 72
 const F_FONT_SIZE = 76
 
