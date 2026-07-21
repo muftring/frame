@@ -19,6 +19,7 @@
         </svg>
         <h1 class="sc-heading">Session complete!</h1>
         <p class="sc-session-name">{{ session?.name }}</p>
+        <p v-if="obsidianExported" class="sc-obsidian-note">Session exported to Obsidian &check;</p>
       </div>
 
       <!-- Stats grid -->
@@ -113,7 +114,8 @@ export default {
       thumbnails: [],
       deletedOnDisk: [],
       deletedSize: 0,
-      cleaningUp: false
+      cleaningUp: false,
+      obsidianExported: false
     }
   },
   computed: {
@@ -152,6 +154,15 @@ export default {
     if (Array.isArray(allDeleted)) {
       this.deletedOnDisk = allDeleted.filter(f => !f.trashed_at)
       this.deletedSize = this.deletedOnDisk.reduce((sum, f) => sum + (f.size_bytes || 0), 0)
+    }
+
+    const autoExport = (await window.api.invoke('settings:get', 'obsidianAutoExport', false))?.value
+    const vaultPath = (await window.api.invoke('settings:get', 'obsidianVaultPath', null))?.value
+    if (autoExport && vaultPath) {
+      const result = await window.api.invoke('library:exportObsidian', 'session', this.session.id)
+      if (result.success) {
+        this.obsidianExported = true
+      }
     }
   },
   methods: {
@@ -248,6 +259,12 @@ export default {
   font-size: 15px;
   color: var(--accent);
   font-weight: 500;
+}
+
+.sc-obsidian-note {
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 6px;
 }
 
 /* ── Stats ────────────────────────────────────── */

@@ -58,6 +58,17 @@
       <div v-if="!files.length" class="frame-strip-empty">No frames in this set</div>
     </div>
 
+    <!-- Notes -->
+    <div class="pano-notes">
+      <MarkdownEditor
+        v-model="localNotes"
+        placeholder="Add notes about this panorama set…"
+        minHeight="48px"
+        :saveStatus="notesSaveStatus"
+        @save="onNotesSave"
+      />
+    </div>
+
     <!-- Controls -->
     <div class="pano-controls">
       <button class="btn" @click="openAddFrames">Add frames</button>
@@ -117,10 +128,11 @@
 
 <script>
 import ImageViewer from './ImageViewer.vue'
+import MarkdownEditor from '../../components/MarkdownEditor.vue'
 
 export default {
   name: 'PanoSetView',
-  components: { ImageViewer },
+  components: { ImageViewer, MarkdownEditor },
   props: {
     panoSetId: { type: Number, required: true },
     activeSession: { type: Object, default: null }
@@ -141,7 +153,10 @@ export default {
       availableThumbs: {},
       selectedToAdd: [],
       viewerOpen: false,
-      viewerIndex: 0
+      viewerIndex: 0,
+      localNotes: '',
+      notesSaveStatus: '',
+      notesSaveTimer: null
     }
   },
   computed: {
@@ -173,6 +188,7 @@ export default {
       if (!this.activeSession) return
       const sets = await window.api.invoke('pano:listSets', this.activeSession.id)
       this.panoSet = Array.isArray(sets) ? sets.find(s => s.id === this.panoSetId) || null : null
+      this.localNotes = this.panoSet?.notes || ''
     },
     async loadFiles() {
       const files = await window.api.invoke('pano:listFiles', this.panoSetId)
@@ -261,6 +277,16 @@ export default {
       await this.loadPanoSet()
       await this.loadFiles()
       this.$emit('set-changed')
+    },
+    onNotesSave(content) {
+      clearTimeout(this.notesSaveTimer)
+      this.notesSaveStatus = 'saving'
+      this.notesSaveTimer = setTimeout(async () => {
+        await window.api.invoke('pano:updateSet', this.panoSetId, { notes: content })
+        this.panoSet = { ...this.panoSet, notes: content }
+        this.notesSaveStatus = 'saved'
+        setTimeout(() => { this.notesSaveStatus = '' }, 2000)
+      }, 800)
     }
   }
 }
@@ -429,6 +455,12 @@ export default {
   font-size: 12px;
   color: var(--text2);
   padding: 20px;
+}
+
+/* ── Notes ────────────────────────────────────── */
+.pano-notes {
+  padding: 12px 20px 0;
+  flex-shrink: 0;
 }
 
 /* ── Controls ─────────────────────────────────── */
