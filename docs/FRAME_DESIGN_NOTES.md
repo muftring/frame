@@ -12,20 +12,18 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v1.5 shipped.** Phases 11–14 complete: unified sequence detection, panorama workflow, burst workflow, settings integration.
 
-**v2.0 in progress** — Branding A ✅ · Branding B ✅ · Export/Import + Auto-Backup (E1, E2) ✅ built and verified in PR #9.
+**v2.0 shipped.** Branding A+B + Export/Import + Auto-Backup complete.
 
-**v2.0 scope:** Branding A+B + Export/Import + Auto-Backup + FRAME_DESIGN_NOTES.md committed to repo.
+**v2.1 shipped.** Curator Notes: session notes, group notes, global journal (~/.frame/journal.md), Obsidian export.
 
 **Next actions:**
-- [x] Complete Phases 11–14 in Claude Code → v1.5
-- [x] Complete Branding A in Claude Code
-- [x] Complete Branding B1 and B2 in Claude Code
-- [x] Run Export/Import + Auto-Backup prompts (E1, E2) in Claude Code
-- [ ] Merge PR #9 (E1 + E2)
-- [ ] Update FRAME_DESIGN_NOTES.md and include in PR
-- [ ] Cut v2.0 release
-- [ ] Mac migration using Export/Import
+- [x] Complete Phases 11–14 → v1.5
+- [x] Branding A+B → v2.0
+- [x] Export/Import + Auto-Backup (E1, E2) → v2.0
+- [x] Mac migration using Export/Import
+- [x] Run N1, N2, N3 in Claude Code → v2.1
 - [ ] Begin blog/paper Part 1 in chat
+- [ ] iCloud Photos integration planning → v3.0
 
 ---
 
@@ -35,6 +33,8 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-07 | Dock icon F centering: F_X=24 in generate-icons.js, not 50 — opentype.js glyph.getPath(x) places LEFT EDGE at x, unlike SVG text-anchor=middle which centers at x. Do not revert to 50. | Root cause: different rendering pipelines, different reference points |
+| 2026-07 | Curator notes at three levels: session (SQLite), group (SQLite), global journal (flat .md file). Obsidian export one-way only. No in-Frame linking — leave that to Obsidian. | Frame captures notes in context with photos; Obsidian provides the knowledge graph across sessions |
 | 2026-07 | v2.0 scope defined: Branding A+B + Export/Import + Auto-Backup + Design Notes. v1.5 shipped Phases 11-14. | Clean milestone — all new polish and infrastructure in one release |
 | 2026-07 | Chose Times New Roman Regular Italic (J6) for logomark F | Most distinctive of 12 options explored; italic echoes strip tilt rhythm; regular weight lets bright rim do the lifting |
 | 2026-07 | Chose H3 strip treatment — 5 fading gold strips + dark gap + #ffd966 rim on F | 5 strips fill the icon completely; fading opacity reads as negative film; I3 rim separates F from strips without being decorative |
@@ -351,7 +351,6 @@ See full spec in [Export / Import / Backup](#export--import--backup) section.
 | ⌘5 | Gallery | U | Burst candidate tag |
 | ⌘6 | Process | P | B&W preview toggle |
 | ⌘7 | Publish | C | Burst compare view |
-| ⌘8 | Journal | | |
 | ⌘, | Settings | ← → | Navigate photos |
 
 **In Burst Compare View:** ← → navigate · K/Enter keep · D/Delete reject · Shift+Enter keep best · 1-9 jump · +/- zoom · 0 reset · Escape close
@@ -522,6 +521,24 @@ See full Claude Code prompts in [Claude Code Prompts — E1 and E2](#claude-code
 
 ---
 
+---
+
+### Curator Notes + Journal — N1, N2, N3 ✅
+| Prompt | Description |
+|---|---|
+| N1 | `MarkdownEditor.vue` shared component (view/edit/auto-save/auto-resize). `notes:updateSession` + `notes:updateGroup` IPC. `journal:read/write/getPath` IPC for `~/.frame/journal.md`. Session notes on Home cards. Group notes in Triage, PanoSetView, BurstSetView. |
+| N2 | `JournalModule.vue` — full-screen Markdown writing environment, always-edit mode, Preview toggle, word count, "Open in editor" (shell.openPath), session context bar. Journal sidebar nav item + icon. |
+| N3 | Obsidian vault export — Settings Integrations section (vault path, subfolder), `library:exportObsidian(scope)` IPC, session `.md` files with YAML frontmatter + event sections + stats table, `Frame Index.md` with wikilinks, auto-export on session complete toggle. |
+
+**Storage:**
+- Session notes: `sessions.notes` (column exists from Phase 6A)
+- Group notes: `event_groups.notes` (column exists from Phase 6A)
+- Global journal: `~/.frame/journal.md` (flat file, not SQLite)
+
+**Export format:** `[vault]/Frame/Sessions/[Session Name].md` + `[vault]/Frame/Journal.md` + `[vault]/Frame/Frame Index.md`
+
+---
+
 ## Future Features
 
 Designed and understood — explicitly deferred.
@@ -551,6 +568,58 @@ Implementation: CSS custom property swap on `:root`. All colors already in token
 
 ### In-App Help System 💭 *(v3.0)*
 Deferred until user base established. Interim: PDF quick-start + keyboard reference + website docs.
+
+---
+
+
+### iCloud Photos Integration 💭 *(v3.0)*
+
+**The insight:** Frame's curation workflow applies equally well to an existing iCloud Photos library as it does to an SD card. 40,000+ photos with no curation is the same problem at a larger scale.
+
+**The design question — answered:**
+> **Replace originals and permanently delete non-keepers.**
+> Rationale: 40,000+ photos is unusable because of signal-to-noise, not storage.
+> No one browses a collection that large. A curated library of 8,000 meaningful
+> photos is worth more than 40,000 that never get looked at. Curation has real
+> value — in usability and in iCloud storage costs.
+
+**Deletion UX must be unambiguous (not scary, just clear):**
+> "87 photos will be permanently deleted from iCloud Photos and all your devices
+> after 30 days. This cannot be undone. Proceed?"
+> iCloud's 30-day Recently Deleted window is the safety net — Frame doesn't need
+> to add another one on top of it.
+
+**Three possible approaches (evaluated):**
+
+| Approach | Method | Pros | Cons |
+|---|---|---|---|
+| A | Read `.photoslibrary` originals folder directly | Fast, no API, works offline | Undocumented, fragile, no metadata |
+| B | macOS PhotoKit framework (Swift/ObjC bridge) | Official, stable, full metadata | Requires native code, complex |
+| C | Export from Photos → Frame → re-import | Works today, zero new code | Manual, temporary file duplication |
+
+**Decision: Approach B for v3.0.** PhotoKit is the only approach that gives full metadata, album structure, and stable access. Requires a small Swift helper that Electron spawns as a child process.
+
+**Interim workflow (Approach C — works now):**
+1. In Photos: select album/date range → File → Export → Export Originals → folder on disk
+2. In Frame: run existing Triage → Sort → Edit → Process → Publish workflow
+3. Frame publishes keepers back to Photos via existing AppleScript integration
+4. In Photos: optionally delete non-keepers
+
+**Chunking strategy:** 40k photos is too much at once. Natural chunks:
+- By album (trips, events)
+- By year or date range
+- By "Recently Added" (process the last few months)
+Each chunk = one Frame session. Session DB is the permanent curation record.
+
+**v3.0 feature scope (when ready):**
+- iCloud Photos source: browse library, select album/date range, copy to local working folder to begin session
+- Metadata import: captions, favorites, existing album membership
+- Publish back: keepers return to Photos with Frame tags/captions
+- Album creation: "Frame — [Session Name] — Keepers" album in Photos
+- Optional deletion of non-keepers from Photos (with strong confirmation — permanent)
+
+**Native code bridge:** Electron N-API or child_process.spawn of a compiled Swift helper.
+This is the primary complexity driver — first native code in Frame.
 
 ---
 
@@ -592,8 +661,9 @@ Note: photo release forms required before publishing player photos.
 | v1.3.0 | Unified sequence detection schema and algorithm | ✅ Shipped |
 | v1.4.0 | Panorama UI: Sorter, Gallery, Hugin handoff | ✅ Shipped |
 | v1.5.0 | Burst UI: compare view, Gallery, composite + Settings | ✅ Shipped |
-| v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | 🔨 In progress (PR #9) |
-| v3.0 | Relative paths, theme system, snapshots, in-app help | 💭 Planned |
+| v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
+| v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
+| v3.0 | Relative paths, theme system, snapshots, in-app help, iCloud Photos integration | 💭 Planned |
 
 ---
 
