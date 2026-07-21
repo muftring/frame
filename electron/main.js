@@ -10,6 +10,7 @@ const sessionStore = require('./services/sessionStore')
 const sequenceDetector = require('./services/sequenceDetector')
 const backupService = require('./services/backupService')
 const libraryService = require('./services/libraryService')
+const obsidianExport = require('./services/obsidianExport')
 
 const isDev = !app.isPackaged
 const REPO_URL = 'https://github.com/muftring/frame'
@@ -191,6 +192,15 @@ ipcMain.handle('dialog:openFramelib', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [{ name: 'Frame Library', extensions: ['framelib'] }]
+  })
+  if (result.canceled) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('dialog:openVaultFolder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    message: 'Select your Obsidian vault folder'
   })
   if (result.canceled) return null
   return result.filePaths[0]
@@ -388,6 +398,14 @@ ipcMain.handle('library:import', async (event, filePath, pathMappings) => {
 
 ipcMain.handle('fs:pathExists', (_, filePath) =>
   fsNode.access(filePath).then(() => true).catch(() => false))
+
+ipcMain.handle('library:exportObsidian', async (_, scope, sessionId) => {
+  const store = await getStore()
+  const vaultPath = store.get('obsidianVaultPath')
+  const subfolder = store.get('obsidianVaultSubfolder', 'Frame')
+  if (!vaultPath) return { success: false, error: 'Obsidian vault path not configured' }
+  return obsidianExport.exportObsidian(scope, sessionId, { vaultPath, subfolder })
+})
 
 ipcMain.handle('app:relaunch', () => {
   app.relaunch()

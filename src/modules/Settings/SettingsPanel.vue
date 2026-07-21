@@ -262,6 +262,12 @@
             </div>
           </section>
 
+          <!-- Integrations -->
+          <section class="settings-section">
+            <h4>Integrations</h4>
+            <IntegrationsPanel />
+          </section>
+
           <!-- Library (Export / Import / Auto-backup) -->
           <section class="settings-section">
             <ExportPanel />
@@ -388,10 +394,11 @@ const FOCAL_TOLERANCE_OFF = 99999
 import ExportPanel from './ExportPanel.vue'
 import ImportPanel from './ImportPanel.vue'
 import BackupPanel from './BackupPanel.vue'
+import IntegrationsPanel from './IntegrationsPanel.vue'
 
 export default {
   name: 'SettingsPanel',
-  components: { ExportPanel, ImportPanel, BackupPanel },
+  components: { ExportPanel, ImportPanel, BackupPanel, IntegrationsPanel },
   props: {
     settings: { type: Object, required: true }
   },

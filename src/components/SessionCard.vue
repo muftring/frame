@@ -51,6 +51,11 @@
       <button v-if="session.status === 'active'" class="sc-btn sc-btn-resume" @click="$emit('resume', session)">Resume →</button>
       <button class="sc-btn sc-btn-view" @click="$emit('view', session)">View</button>
       <button v-if="canArchive" class="sc-btn sc-btn-archive" @click="$emit('archive', session)">Archive</button>
+      <a
+        v-if="showExportLink"
+        class="sc-export-link"
+        @click.stop="exportToObsidian"
+      >{{ exporting ? 'Exporting…' : 'Export →' }}</a>
     </div>
   </div>
 </template>
@@ -69,6 +74,9 @@ const STAGES = [
 export default {
   name: 'SessionCard',
   components: { MarkdownEditor },
+  inject: {
+    toast: { default: () => () => {} }
+  },
   props: {
     session: { type: Object, required: true },
     isActive: { type: Boolean, default: false }
@@ -76,6 +84,8 @@ export default {
   emits: ['resume', 'view', 'archive'],
   data() {
     return {
+      obsidianVaultPath: null,
+      exporting: false,
       STAGES,
       editing: false,
       editingName: '',
@@ -91,6 +101,9 @@ export default {
     canArchive() {
       return (this.session.status === 'complete' || this.session.status === 'active') && !this.isActive
     },
+    showExportLink() {
+      return this.session.status === 'complete' && !!this.obsidianVaultPath
+    },
     keepRateText() {
       if (!this.session.fileCount) return '—'
       return Math.round((this.session.keptCount / this.session.fileCount) * 100) + '%'
@@ -100,6 +113,9 @@ export default {
       const events = this.session.groupCount || 0
       return `${rel} · ${events} ${events === 1 ? 'event' : 'events'}`
     }
+  },
+  async mounted() {
+    this.obsidianVaultPath = (await window.api.invoke('settings:get', 'obsidianVaultPath', null))?.value || null
   },
   methods: {
     formatNum(n) {
@@ -148,6 +164,17 @@ export default {
         this.notesSaveStatus = 'saved'
         setTimeout(() => { this.notesSaveStatus = '' }, 2000)
       }, 800)
+    },
+    async exportToObsidian() {
+      if (this.exporting) return
+      this.exporting = true
+      const result = await window.api.invoke('library:exportObsidian', 'session', this.session.id)
+      this.exporting = false
+      if (result.success) {
+        this.toast('Session exported to Obsidian', 'success')
+      } else {
+        this.toast(result.error || 'Obsidian export failed', 'error')
+      }
     }
   }
 }
@@ -305,4 +332,14 @@ export default {
   border: 1px solid var(--color-border-2);
   color: var(--color-text-2);
 }
+
+.sc-export-link {
+  font-size: 9px;
+  color: var(--color-text-2);
+  cursor: pointer;
+  text-decoration: underline;
+  align-self: center;
+  white-space: nowrap;
+}
+.sc-export-link:hover { color: var(--color-accent); }
 </style>

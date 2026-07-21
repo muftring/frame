@@ -54,6 +54,9 @@ No structure required.`
 export default {
   name: 'JournalModule',
   components: { MarkdownEditor },
+  inject: {
+    toast: { default: () => () => {} }
+  },
   props: {
     activeSession: { type: Object, default: null }
   },
@@ -103,10 +106,11 @@ export default {
     },
     async exportToObsidian() {
       if (!this.obsidianVaultPath) return
-      try {
-        await window.api.invoke('library:exportObsidian', 'journal')
-      } catch {
-        // library:exportObsidian ships in Prompt N3
+      const result = await window.api.invoke('library:exportObsidian', 'journal')
+      if (result.success) {
+        this.toast('Journal exported to Obsidian', 'success')
+      } else {
+        this.toast(result.error || 'Obsidian export failed', 'error')
       }
     }
   }
