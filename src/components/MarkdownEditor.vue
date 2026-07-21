@@ -25,7 +25,7 @@
       :style="{ minHeight }"
     />
 
-    <div v-if="editing" class="md-toolbar">
+    <div v-if="editing && !alwaysEdit" class="md-toolbar">
       <span class="md-hint">esc or &#8984;&#8629; to finish &middot; Markdown supported</span>
       <span class="md-save-status" :class="saveStatus">
         <span v-if="saveStatus === 'saving'">Saving&hellip;</span>
@@ -45,13 +45,20 @@ export default {
     modelValue: { type: String, default: '' },
     placeholder: { type: String, default: '' },
     minHeight: { type: String, default: '80px' },
-    saveStatus: { type: String, default: '' }
+    saveStatus: { type: String, default: '' },
+    alwaysEdit: { type: Boolean, default: false }
   },
   emits: ['update:modelValue', 'save'],
   data() {
     return {
-      editing: false,
-      localValue: ''
+      editing: this.alwaysEdit,
+      localValue: this.alwaysEdit ? this.modelValue : '',
+      _userEdited: false
+    }
+  },
+  mounted() {
+    if (this.alwaysEdit) {
+      this.$nextTick(() => this.autoResize())
     }
   },
   computed: {
@@ -60,8 +67,22 @@ export default {
       return marked(this.modelValue)
     }
   },
+  watch: {
+    // alwaysEdit mounts straight into the textarea, before a parent's async
+    // load (e.g. Journal's journal:read) may have populated modelValue yet.
+    // Hydrate localValue from that first real update, but stop once the
+    // user has typed anything — after that, modelValue only ever changes
+    // as an echo of their own input, and re-syncing could fight the cursor.
+    modelValue(newVal) {
+      if (this.alwaysEdit && !this._userEdited) {
+        this.localValue = newVal
+        this.$nextTick(() => this.autoResize())
+      }
+    }
+  },
   methods: {
     startEdit() {
+      if (this.alwaysEdit) return
       this.localValue = this.modelValue
       this.editing = true
       this.$nextTick(() => {
@@ -70,16 +91,23 @@ export default {
       })
     },
     stopEdit() {
+      if (this.alwaysEdit) return
       this.editing = false
       this.$emit('update:modelValue', this.localValue)
       this.$emit('save', this.localValue)
     },
     onInput() {
+      this._userEdited = true
       this.$emit('update:modelValue', this.localValue)
       this.$emit('save', this.localValue)
       this.autoResize()
     },
     autoResize() {
+      // In alwaysEdit contexts (e.g. the Journal module) the textarea is
+      // meant to fill its container via CSS and let an ancestor scroll —
+      // setting an inline pixel height here would fight that and shrink it
+      // down to just the placeholder/content's natural height instead.
+      if (this.alwaysEdit) return
       const ta = this.$refs.textarea
       if (!ta) return
       ta.style.height = 'auto'

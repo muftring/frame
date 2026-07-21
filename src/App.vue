@@ -64,6 +64,7 @@
           <EditorModule v-else-if="currentModule === 'editor'" key="editor" :image-path="moduleData" />
           <ProcessModule v-else-if="currentModule === 'process'" key="process" @navigate="handleNavigate" />
           <PublishModule v-else-if="currentModule === 'publish'" key="publish" />
+          <JournalModule v-else-if="currentModule === 'journal'" key="journal" :active-session="activeSession" @navigate="handleNavigate" />
         </Transition>
       </div>
     </main>
@@ -98,6 +99,7 @@ import GalleryModule from './modules/Gallery/GalleryModule.vue'
 import EditorModule from './modules/Editor/EditorModule.vue'
 import ProcessModule from './modules/Process/ProcessModule.vue'
 import PublishModule from './modules/Publish/PublishModule.vue'
+import JournalModule from './modules/Journal/JournalModule.vue'
 import SettingsPanel from './modules/Settings/SettingsPanel.vue'
 import NavIcon from './components/NavIcon.vue'
 
@@ -129,7 +131,7 @@ export default {
   name: 'App',
   components: {
     HomeModule, TriageModule, SorterModule, GalleryModule,
-    EditorModule, ProcessModule, PublishModule, SettingsPanel, SessionComplete,
+    EditorModule, ProcessModule, PublishModule, JournalModule, SettingsPanel, SessionComplete,
     NavIcon
   },
   provide() {
@@ -177,6 +179,7 @@ export default {
         { id: 'editor',  label: 'Editor',  icon: 'edit' },
         { id: 'process', label: 'Process', icon: 'process' },
         { id: 'publish', label: 'Publish', icon: 'publish' },
+        { id: 'journal', label: 'Journal', icon: 'journal' },
       ]
     }
   },
@@ -357,6 +360,7 @@ export default {
           '5': 'gallery',
           '6': 'process',
           '7': 'publish',
+          '8': 'journal',
         }
         if (moduleKeys[e.key]) {
           e.preventDefault()

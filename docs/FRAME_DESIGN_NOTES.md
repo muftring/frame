@@ -351,6 +351,7 @@ See full spec in [Export / Import / Backup](#export--import--backup) section.
 | ⌘5 | Gallery | U | Burst candidate tag |
 | ⌘6 | Process | P | B&W preview toggle |
 | ⌘7 | Publish | C | Burst compare view |
+| ⌘8 | Journal | | |
 | ⌘, | Settings | ← → | Navigate photos |
 
 **In Burst Compare View:** ← → navigate · K/Enter keep · D/Delete reject · Shift+Enter keep best · 1-9 jump · +/- zoom · 0 reset · Escape close
