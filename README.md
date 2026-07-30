@@ -356,6 +356,12 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
+---
+
 <div align="center">
-<sub>Keep the best. Retire the rest.</sub>
+
+*Frame: Keep the best. Retire the rest.*
+
+Copyright © 2026 Michael Uftring. All rights reserved.
+
 </div>
