@@ -6,8 +6,9 @@
 
 **Photo workflow, start to finish.**
 
-A macOS desktop app for photographers who want to take a card full of photos
-to a curated, published collection — without the complexity of a full DAM.
+A macOS desktop app for photographers who shoot too much and want a fast,
+focused workflow — import, cull, edit, publish — without the overhead of
+a full photo management suite.
 
 [![Version](https://img.shields.io/github/v/release/muftring/frame?style=flat-square&color=c9a84c)](https://github.com/muftring/frame/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](https://github.com/muftring/frame/releases)
@@ -356,5 +357,5 @@ MIT — see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-<sub>Made for photographers who shoot too many photos and want to keep only the best ones.</sub>
+<sub>Keep the best. Retire the rest.</sub>
 </div>
