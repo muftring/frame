@@ -16,6 +16,11 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v2.1 shipped.** Curator Notes: session notes, group notes, global journal (~/.frame/journal.md), Obsidian export.
 
+**GitHub milestones:**
+- v2.2 — due August 31, 2026
+- v2.3 — due September 30, 2026
+- v3.0 — due October 31, 2026
+
 **Next actions:**
 - [x] Complete Phases 11–14 → v1.5
 - [x] Branding A+B → v2.0
@@ -33,6 +38,7 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-07 | Code signing + notarization added to v3.0 roadmap — Apple Developer account required; xattr workaround sufficient for personal use until then | Gatekeeper blocks unsigned apps with misleading "damaged" message |
 | 2026-07 | Dock icon F centering: F_X=24 in generate-icons.js, not 50 — opentype.js glyph.getPath(x) places LEFT EDGE at x, unlike SVG text-anchor=middle which centers at x. Do not revert to 50. | Root cause: different rendering pipelines, different reference points |
 | 2026-07 | Curator notes at three levels: session (SQLite), group (SQLite), global journal (flat .md file). Obsidian export one-way only. No in-Frame linking — leave that to Obsidian. | Frame captures notes in context with photos; Obsidian provides the knowledge graph across sessions |
 | 2026-07 | v2.0 scope defined: Branding A+B + Export/Import + Auto-Backup + Design Notes. v1.5 shipped Phases 11-14. | Clean milestone — all new polish and infrastructure in one release |
@@ -543,7 +549,51 @@ See full Claude Code prompts in [Claude Code Prompts — E1 and E2](#claude-code
 
 Designed and understood — explicitly deferred.
 
-### Snapshots 💭 *(v3.0)*
+### Film Strip Clip Fix 💭 *(v2.2 — due Aug 31)*
+
+Top film strip in the app icon bleeds past the rounded corner boundary in the upper-right. Fix: add a `<clipPath>` in the icon SVG that constrains all strip content to the rounded square boundary. The F sits outside the clip group and is unaffected. GitHub issue [#17](https://github.com/muftring/frame/issues/17).
+
+---
+
+### Auto-Update Check 💭 *(v2.2 — due Aug 31)*
+
+On launch, Frame silently fetches a `latest.json` from the repo, compares to `app.getVersion()`, and shows a toast if a newer version is available: *"Frame 2.2.0 is available — download."* One click opens the GitHub releases page. No auto-download (requires code signing — deferred to v3.0).
+
+`latest.json` format:
+```json
+{
+  "version": "2.2.0",
+  "releaseDate": "2026-08-31",
+  "releaseNotes": "Film strip clip fix, auto-update check",
+  "downloadUrl": "https://github.com/muftring/frame/releases/latest"
+}
+```
+
+IPC channel: `app:checkForUpdates()` → `{ hasUpdate, latestVersion, downloadUrl }`
+Shown as a dismissible toast, not a modal. Checks once per launch only.
+
+---
+
+### Print Lab Integration 💭 *(v2.3 — due Sep 30)*
+
+Send keeper photos directly to a print lab from the Publish module.
+
+**Recommended starting point: Mpix** — professional lab with a developer-friendly API, part of Miller's Lab group. Quality appropriate for a photography workflow app.
+
+**Frame's approach:** consistent with the orchestrator philosophy — Frame handles selection and handoff, the lab handles fulfillment.
+
+**Feature scope:**
+- New "Send to print lab" section in Publish module alongside ArchiVault + iCloud
+- Select keeper photos, choose lab, select print sizes
+- Frame warns if a photo's resolution is insufficient for the requested print size (calculated from EXIF megapixels and aspect ratio)
+- For labs with APIs (Mpix): full order creation in Frame — sizes, quantities, paper type, submit
+- For labs without APIs: Frame opens vendor upload page and stages files in a folder for manual upload
+
+**Labs to evaluate:** Mpix · Shutterfly · Bay Photo · WHCC · Artifact Uprising · CVS · Walgreens
+
+---
+
+### Snapshots 💭 *(v3.0 — due Oct 31)*
 Named point-in-time capture of a single session's DB state. Lets you experiment with rollback.
 
 **Why deferred:** Option A delete (instant un-delete) covers the common case. Auto-backup covers corruption. Snapshot UI complexity not justified until real users request it.
@@ -554,25 +604,70 @@ Named point-in-time capture of a single session's DB state. Lets you experiment 
 
 ---
 
-### Relative Paths 💭 *(v3.0)*
+### Relative Paths 💭 *(v3.0 — due Oct 31)*
 Store `full_path` relative to a library root instead of absolute. Eliminates Mac migration path remapping permanently. Requires schema change. Supersedes E1 path remapping once implemented.
 
 ---
 
-### Theme System 💭 *(v3.0)*
+### Theme System 💭 *(v3.0 — due Oct 31)*
 Three themes: **Dark Gold** (current) · **Light Editorial** (#F7F4F0 + #C4522A) · **Bold Violet** (#16111F + #E8943A)
 
 Implementation: CSS custom property swap on `:root`. All colors already in tokens.css as variables — theme is one variable set swap.
 
 ---
 
-### In-App Help System 💭 *(v3.0)*
+### In-App Help System 💭 *(v3.0 — due Oct 31)*
 Deferred until user base established. Interim: PDF quick-start + keyboard reference + website docs.
 
 ---
 
 
-### iCloud Photos Integration 💭 *(v3.0)*
+
+### Code Signing & Notarization 💭 *(v3.0 — due Oct 31)*
+
+**The problem:** Without code signing and notarization, macOS shows "Frame is damaged and can't be opened" when launching a downloaded build. The `xattr -cr /Applications/Frame.app` workaround works for personal use but is not viable for sharing with others.
+
+**Requirements:**
+- Apple Developer account ($99/year)
+- Developer ID Application certificate (for distribution outside Mac App Store)
+- Hardened Runtime entitlements
+- Apple notarization (automated scan, issues a ticket macOS checks on launch)
+
+**electron-builder config additions:**
+```json
+"mac": {
+  "hardenedRuntime": true,
+  "gatekeeperAssess": false,
+  "entitlements": "build/entitlements.mac.plist",
+  "entitlementsInherit": "build/entitlements.mac.plist",
+  "notarize": { "teamId": "YOUR_TEAM_ID" }
+}
+```
+
+**entitlements.mac.plist** — minimum required for Electron:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+</dict>
+</plist>
+```
+
+**Interim workaround (personal use only):**
+```bash
+xattr -cr /Applications/Frame.app
+```
+
+**When to prioritize:** Before sharing Frame with any other users. The `xattr` workaround is reasonable for a solo developer but not acceptable for distribution.
+
+---
+
+### iCloud Photos Integration 💭 *(v3.0 — due Oct 31)*
 
 **The insight:** Frame's curation workflow applies equally well to an existing iCloud Photos library as it does to an SD card. 40,000+ photos with no curation is the same problem at a larger scale.
 
@@ -651,6 +746,80 @@ Note: photo release forms required before publishing player photos.
 
 ---
 
+---
+
+## GitHub Workflow
+
+### Recommended GitHub features to adopt
+
+**Issues — use for:**
+- Bug reports (like the dock icon centering fix)
+- Feature requests (curator notes, iCloud Photos, etc.)
+- Each Claude Code prompt set could be one issue
+  (e.g. "Implement Curator Notes — N1, N2, N3")
+- Label system: `bug` `feature` `enhancement`
+  `design` `claude-code` `v3.0` etc.
+
+**Milestones — map to version numbers:**
+- v2.2 — next planned release (whatever comes after v2.1)
+- v3.0 — code signing, iCloud, themes, relative paths
+- Assign issues to milestones to see release progress
+
+**Projects (GitHub Projects board):**
+- A simple Kanban: Backlog → In Design → In Progress → Done
+- Cards map to issues
+- Useful for seeing everything in flight at once
+- Particularly helpful when juggling Claude Code sessions
+  (you can see what phase you're in at a glance)
+
+**Branches — current convention:**
+- `main` — stable, released code
+- `feature/[name]` — new features (e.g. `feature/notes`)
+- `fix/[name]` — bug fixes (e.g. `fix/dock-icon-centering`)
+- Each Claude Code prompt set → its own branch → PR → merge
+
+**PR descriptions — suggested template:**
+```
+## What this does
+[One paragraph summary]
+
+## Claude Code prompts
+[List which prompts were run: N1, N2, N3]
+
+## Design notes
+[Link to relevant section in FRAME_DESIGN_NOTES.md]
+
+## Testing
+- [ ] Verification checklist items from the prompt
+- [ ] No regressions in [affected modules]
+```
+
+**Releases — use GitHub Releases:**
+- Tag each version (v2.0.0, v2.1.0, etc.)
+- Attach the built .dmg as a release asset
+- Write a short changelog in the release notes
+- This gives you a permanent download history
+  and makes sharing specific versions easy
+
+**FRAME_DESIGN_NOTES.md as the bridge:**
+The design notes live in the repo and serve as the
+connection between the Claude.ai design conversation
+and the GitHub issue/PR workflow. Reference the design
+notes section in PRs; reference the GitHub issue number
+in Claude Code sessions for traceability.
+
+---
+
+## Roadmap & GitHub Milestones
+
+| Milestone | Due date | Features |
+|---|---|---|
+| **v2.2** | August 31, 2026 | Film strip clip fix ([#17](https://github.com/muftring/frame/issues/17)), auto-update check at launch |
+| **v2.3** | September 30, 2026 | Print lab integration (Mpix, Shutterfly, others) |
+| **v3.0** | October 31, 2026 | Code signing + notarization, iCloud Photos, relative paths, theme system, snapshots, in-app help |
+
+See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milestones](https://github.com/muftring/frame/milestones) for full detail.
+
 ## Version History
 
 | Version | What shipped | Status |
@@ -663,7 +832,9 @@ Note: photo release forms required before publishing player photos.
 | v1.5.0 | Burst UI: compare view, Gallery, composite + Settings | ✅ Shipped |
 | v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
 | v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
-| v3.0 | Relative paths, theme system, snapshots, in-app help, iCloud Photos integration | 💭 Planned |
+| v2.2 | Film strip clip fix, auto-update check | 💭 Planned (due Aug 31) |
+| v2.3 | Print lab integration | 💭 Planned (due Sep 30) |
+| v3.0 | Code signing + notarization, iCloud Photos, relative paths, themes, snapshots, in-app help | 💭 Planned (due Oct 31) |
 
 ---
 
