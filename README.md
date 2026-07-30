@@ -325,7 +325,7 @@ Frame was designed and built in close collaboration with
 [Claude](https://claude.ai) (Anthropic) — and it shows in how the project
 is structured.
 
-**Claude.ai** (this interface) handled the design work: defining the problem,
+**Claude.ai** handled the design work: defining the problem,
 exploring architecture options, making tradeoffs, iterating on the branding,
 and producing detailed specifications for every feature. The logo, the
 pipeline model, the soft-delete behavior, the sequence detection algorithm,
