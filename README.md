@@ -356,8 +356,6 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
----
-
 <div align="center">
 
 *Frame: Keep the best. Retire the rest.*
