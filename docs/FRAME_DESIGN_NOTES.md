@@ -16,6 +16,8 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v2.1 shipped.** Curator Notes: session notes, group notes, global journal (~/.frame/journal.md), Obsidian export.
 
+**v2.2 in progress.** Film strip clip fix (#17) merged. Auto-update check built and verified, not yet tagged.
+
 **GitHub milestones:**
 - v2.2 — due August 31, 2026
 - v2.3 — due September 30, 2026
@@ -27,6 +29,9 @@ This document is the persistent index of all design decisions, prompts, and arch
 - [x] Export/Import + Auto-Backup (E1, E2) → v2.0
 - [x] Mac migration using Export/Import
 - [x] Run N1, N2, N3 in Claude Code → v2.1
+- [x] Film strip clip fix (V2.2-A) → v2.2
+- [x] Auto-update check (V2.2-B) → v2.2
+- [ ] Tag and release v2.2
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] iCloud Photos integration planning → v3.0
 
@@ -549,15 +554,17 @@ See full Claude Code prompts in [Claude Code Prompts — E1 and E2](#claude-code
 
 Designed and understood — explicitly deferred.
 
-### Film Strip Clip Fix 💭 *(v2.2 — due Aug 31)*
+### Film Strip Clip Fix ✅ *(v2.2 — merged PR [#22](https://github.com/muftring/frame/pull/22), closed issue [#17](https://github.com/muftring/frame/issues/17))*
 
-Top film strip in the app icon bleeds past the rounded corner boundary in the upper-right. Fix: add a `<clipPath>` in the icon SVG that constrains all strip content to the rounded square boundary. The F sits outside the clip group and is unaffected. GitHub issue [#17](https://github.com/muftring/frame/issues/17).
+Top film strip in the app icon bled past the rounded corner boundary in the upper-right. Fixed with a `<clipPath>` in the icon SVG that constrains all strip content to the rounded square boundary. The F sits outside the clip group and was unaffected. Also caught the same bug in `electron/splash.html`'s inline copy of the mark (not covered by the original fix description) and fixed it there too.
 
 ---
 
-### Auto-Update Check 💭 *(v2.2 — due Aug 31)*
+### Auto-Update Check ✅ *(v2.2 — built and verified, not yet tagged)*
 
 On launch, Frame silently fetches a `latest.json` from the repo, compares to `app.getVersion()`, and shows a toast if a newer version is available: *"Frame 2.2.0 is available — download."* One click opens the GitHub releases page. No auto-download (requires code signing — deferred to v3.0).
+
+Fetches from `raw.githubusercontent.com/muftring/frame/master/latest.json` — note **`master`**, not `main`. This repo's default branch has always been `master` (the [GitHub Workflow](#github-workflow) section below said `main`; corrected there too).
 
 `latest.json` format:
 ```json
@@ -773,7 +780,9 @@ Note: photo release forms required before publishing player photos.
   (you can see what phase you're in at a glance)
 
 **Branches — current convention:**
-- `main` — stable, released code
+- `master` — stable, released code (this repo's actual default branch —
+  corrected here after V2.2-B's `latest.json` fetch URL was written
+  against `main` and had to be fixed to match reality)
 - `feature/[name]` — new features (e.g. `feature/notes`)
 - `fix/[name]` — bug fixes (e.g. `fix/dock-icon-centering`)
 - Each Claude Code prompt set → its own branch → PR → merge
@@ -795,6 +804,12 @@ Note: photo release forms required before publishing player photos.
 ```
 
 **Releases — use GitHub Releases:**
+- **Before tagging:** update `latest.json` at the repo root (version,
+  releaseDate, releaseNotes) and commit it to `master` on its own —
+  `chore: bump latest.json to vX.X.X`. Frame's auto-update check
+  (v2.2) fetches this file live from `master`, so it must be in place
+  *before* anyone downloads the new release, or the app will notify
+  users of a version that isn't actually downloadable yet.
 - Tag each version (v2.0.0, v2.1.0, etc.)
 - Attach the built .dmg as a release asset
 - Write a short changelog in the release notes
@@ -832,7 +847,7 @@ See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milest
 | v1.5.0 | Burst UI: compare view, Gallery, composite + Settings | ✅ Shipped |
 | v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
 | v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
-| v2.2 | Film strip clip fix, auto-update check | 💭 Planned (due Aug 31) |
+| v2.2 | Film strip clip fix, auto-update check | 🔨 In progress (due Aug 31) |
 | v2.3 | Print lab integration | 💭 Planned (due Sep 30) |
 | v3.0 | Code signing + notarization, iCloud Photos, relative paths, themes, snapshots, in-app help | 💭 Planned (due Oct 31) |
 

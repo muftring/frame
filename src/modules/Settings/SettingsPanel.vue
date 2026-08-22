@@ -342,6 +342,19 @@
             <h4>About</h4>
             <div class="about-title">Frame — Photo Workflow Studio</div>
             <div class="about-version">Version {{ appVersion }}</div>
+
+            <div class="settings-subheading">Updates</div>
+            <div class="update-row">
+              <button class="btn-sm" @click="checkForUpdatesNow" :disabled="checkingUpdate">
+                {{ checkingUpdate ? 'Checking…' : 'Check now' }}
+              </button>
+              <span v-if="updateStatusText" class="update-status" :class="{ warn: updateCheckError }">{{ updateStatusText }}</span>
+            </div>
+            <div v-if="updateHasUpdate" class="update-download">
+              <a @click="openUrl(updateDownloadUrl)">Download from GitHub &#8599;</a>
+            </div>
+            <div v-if="updateLastChecked" class="update-last-checked">Last checked: {{ formattedLastChecked }}</div>
+
             <div class="about-credits">Created by Michael Uftring</div>
             <div class="about-credits">
               <a @click="openUrl('https://github.com/muftring/frame')">View on GitHub</a>
@@ -424,10 +437,27 @@ export default {
       seqOptionsReady: false,
       standardPaths: { ffmpeg: null, hugin: null },
       compositeOutputFolder: null,
-      panoOutputFolder: null
+      panoOutputFolder: null,
+      checkingUpdate: false,
+      updateStatusText: '',
+      updateCheckError: false,
+      updateHasUpdate: false,
+      updateDownloadUrl: null,
+      updateLastChecked: null,
+      updateStatusFadeTimer: null
     }
   },
   computed: {
+    formattedLastChecked() {
+      if (!this.updateLastChecked) return ''
+      const now = new Date()
+      const d = new Date(this.updateLastChecked)
+      const diffDays = Math.floor((now - d) / 86400000)
+      const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      if (diffDays === 0) return 'Today, ' + timeStr
+      if (diffDays === 1) return 'Yesterday, ' + timeStr
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + timeStr
+    },
     gapLabel() {
       const v = this.settings.defaultGapThreshold
       if (v < 60) return v + ' min'
@@ -447,6 +477,7 @@ export default {
   async mounted() {
     this.loadCacheInfo()
     this.appVersion = await window.api.invoke('app:getVersion')
+    this.updateLastChecked = (await window.api.invoke('settings:get', 'updateLastChecked', null))?.value || null
     this._keyHandler = (e) => { if (e.key === 'Escape') this.$emit('close') }
     window.addEventListener('keydown', this._keyHandler)
 
@@ -532,6 +563,29 @@ export default {
     },
     async openUrl(u) {
       await window.api.invoke('shell:openExternal', u)
+    },
+    async checkForUpdatesNow() {
+      clearTimeout(this.updateStatusFadeTimer)
+      this.checkingUpdate = true
+      this.updateCheckError = false
+      this.updateHasUpdate = false
+      this.updateStatusText = ''
+
+      const result = await window.api.invoke('app:checkForUpdates')
+      this.checkingUpdate = false
+      this.updateLastChecked = new Date().toISOString()
+
+      if (result.error) {
+        this.updateCheckError = true
+        this.updateStatusText = 'Could not check for updates'
+      } else if (result.hasUpdate) {
+        this.updateHasUpdate = true
+        this.updateDownloadUrl = result.downloadUrl
+        this.updateStatusText = `Frame ${result.latestVersion} is available —`
+      } else {
+        this.updateStatusText = 'Frame is up to date ✓'
+        this.updateStatusFadeTimer = setTimeout(() => { this.updateStatusText = '' }, 3000)
+      }
     },
     formatSize(bytes) {
       if (!bytes) return '0 B'
@@ -780,6 +834,39 @@ export default {
   text-decoration: none;
 }
 .about-credits a:hover { text-decoration: underline; }
+
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.update-status {
+  font-size: 11px;
+  color: var(--text2);
+}
+.update-status.warn {
+  color: #d99a3a;
+}
+
+.update-download {
+  margin-bottom: 8px;
+}
+.update-download a {
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.update-download a:hover { opacity: 0.85; }
+
+.update-last-checked {
+  font-size: 10px;
+  color: var(--text2);
+  opacity: 0.7;
+  margin-bottom: 12px;
+}
 
 .settings-subheading {
   font-size: 11px;

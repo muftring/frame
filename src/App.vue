@@ -83,7 +83,9 @@
     <div class="toast-container">
       <transition-group name="toast">
         <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" :style="t.color ? { color: t.color } : null">
-          {{ t.message }}
+          <span class="toast-message">{{ t.message }}</span>
+          <a v-if="t.actionLabel" class="toast-action" @click.prevent="openUrl(t.actionUrl)">{{ t.actionLabel }} →</a>
+          <button class="toast-dismiss" @click="dismissToast(t.id)">&times;</button>
         </div>
       </transition-group>
     </div>
@@ -213,11 +215,15 @@ export default {
         this.$refs.settings.openImport(filePath)
       })
     })
+    this._updateAvailableCleanup = window.api.on('app:updateAvailable', (updateInfo) => {
+      this.showUpdateToast(updateInfo)
+    })
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleGlobalKey)
     if (this._completeCleanup) this._completeCleanup()
     if (this._triggerImportCleanup) this._triggerImportCleanup()
+    if (this._updateAvailableCleanup) this._updateAvailableCleanup()
   },
   methods: {
     selectModule(id) {
@@ -337,12 +343,28 @@ export default {
       this.moduleData = { type: 'session-status', sessionId: session.id, status: 'kept' }
       this.currentModule = 'gallery'
     },
-    addToast(message, type = 'info', color = null, duration = 3000) {
+    addToast(message, type = 'info', color = null, duration = 3000, { actionLabel = null, actionUrl = null } = {}) {
       const id = Date.now() + Math.random()
-      this.toasts.push({ id, message, type, color })
-      setTimeout(() => {
-        this.toasts = this.toasts.filter(t => t.id !== id)
-      }, duration)
+      this.toasts.push({ id, message, type, color, actionLabel, actionUrl })
+      // duration: 0 means persistent — only the dismiss button removes it.
+      if (duration > 0) {
+        setTimeout(() => this.dismissToast(id), duration)
+      }
+    },
+    dismissToast(id) {
+      this.toasts = this.toasts.filter(t => t.id !== id)
+    },
+    async openUrl(url) {
+      await window.api.invoke('shell:openExternal', url)
+    },
+    showUpdateToast(updateInfo) {
+      this.addToast(
+        `Frame ${updateInfo.latestVersion} is available`,
+        'update',
+        null,
+        0,
+        { actionLabel: 'Download', actionUrl: updateInfo.downloadUrl }
+      )
     },
     handleGlobalKey(e) {
       const target = e.target
@@ -613,8 +635,39 @@ body {
   font-size: var(--text-base);
   color: var(--color-text);
   max-width: 320px;
-  pointer-events: none;
+  pointer-events: auto;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toast-message {
+  flex: 1;
+}
+
+.toast-action {
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+  margin-left: 8px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.toast-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.5;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0 0 6px;
+  flex-shrink: 0;
+}
+.toast-dismiss:hover {
+  opacity: 1;
 }
 
 .toast.error {
@@ -628,6 +681,11 @@ body {
 }
 
 .toast.warn {
+  border-color: rgba(201, 168, 76, 0.4);
+  color: var(--color-accent);
+}
+
+.toast.update {
   border-color: rgba(201, 168, 76, 0.4);
   color: var(--color-accent);
 }
