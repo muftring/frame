@@ -216,6 +216,15 @@ ipcMain.handle('dialog:openDarktableStyle', async () => {
 })
 
 ipcMain.handle('shell:openExternal', (_, extUrl) => {
+  let parsed
+  try {
+    parsed = new URL(extUrl)
+  } catch {
+    return { success: false, error: 'Invalid URL' }
+  }
+  if (parsed.protocol !== 'https:') {
+    return { success: false, error: 'Only https:// URLs are allowed' }
+  }
   shell.openExternal(extUrl)
   return { success: true }
 })
@@ -437,6 +446,78 @@ async function runAutoBackup() {
     return { skipped: true, reason: 'error: ' + err.message }
   }
 }
+
+// GitHub raw URLs use the actual default branch name — this repo's is
+// "master", not "main". checkForUpdates() fails silently by design, so a
+// wrong branch name here wouldn't crash anything, it would just never
+// find an update.
+const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/muftring/frame/master/latest.json'
+
+function isNewerVersion(latest, current) {
+  const l = latest.split('.').map(Number)
+  const c = current.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    if ((l[i] || 0) > (c[i] || 0)) return true
+    if ((l[i] || 0) < (c[i] || 0)) return false
+  }
+  return false
+}
+
+// Uses Electron's net module (not Node's https) so this respects system
+// proxy settings and works the same in dev and packaged builds. Any
+// failure — offline, DNS, malformed JSON — resolves to { hasUpdate: false }
+// rather than rejecting, since this is a best-effort background check that
+// must never interrupt startup.
+// Records the check timestamp for both callers of this function — the
+// automatic launch-time check and the manual "Check now" button in
+// Settings both funnel through here, so this is the one place that needs
+// to persist it for "Update after every check" to hold for both paths.
+async function recordUpdateChecked() {
+  try {
+    const store = await getStore()
+    store.set('updateLastChecked', new Date().toISOString())
+  } catch { /* best-effort */ }
+}
+
+async function checkForUpdates() {
+  try {
+    const response = await new Promise((resolve, reject) => {
+      const request = net.request(UPDATE_MANIFEST_URL)
+      let body = ''
+      request.on('response', (res) => {
+        res.on('data', chunk => { body += chunk })
+        res.on('end', () => resolve({ status: res.statusCode, body }))
+        res.on('error', reject)
+      })
+      request.on('error', reject)
+      request.end()
+    })
+
+    if (response.status !== 200) {
+      await recordUpdateChecked()
+      return { hasUpdate: false, error: 'Could not reach update server' }
+    }
+
+    const manifest = JSON.parse(response.body)
+    const current = app.getVersion()
+    const newer = isNewerVersion(manifest.version, current)
+
+    await recordUpdateChecked()
+    return {
+      hasUpdate: newer,
+      currentVersion: current,
+      latestVersion: manifest.version,
+      releaseDate: manifest.releaseDate,
+      releaseNotes: manifest.releaseNotes,
+      downloadUrl: manifest.downloadUrl
+    }
+  } catch (err) {
+    await recordUpdateChecked()
+    return { hasUpdate: false, error: err.message }
+  }
+}
+
+ipcMain.handle('app:checkForUpdates', () => checkForUpdates())
 
 let _store = null
 async function getStore() {
@@ -758,6 +839,16 @@ app.whenReady().then(async () => {
     win.webContents.send('library:triggerImport', pendingImportPath)
     pendingImportPath = null
   }
+
+  // 3s delay so the app feels responsive before any network call happens.
+  // The window may already be closed by then (fast quit) — guard against
+  // sending on a destroyed webContents.
+  setTimeout(async () => {
+    const result = await checkForUpdates()
+    if (result.hasUpdate && !win.isDestroyed()) {
+      win.webContents.send('app:updateAvailable', result)
+    }
+  }, 3000)
 })
 
 app.on('window-all-closed', () => {
