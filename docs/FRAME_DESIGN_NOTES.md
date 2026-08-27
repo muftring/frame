@@ -16,10 +16,12 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v2.1 shipped.** Curator Notes: session notes, group notes, global journal (~/.frame/journal.md), Obsidian export.
 
-**v2.2 in progress.** Film strip clip fix (#17) merged. Auto-update check built and verified, not yet tagged.
+**v2.2 shipped.** Film strip clip fix (PR #22) + auto-update check (PR #23) + latest.json date fix (PR #24). Tagged and released August 27, 2026 — ahead of the August 31 milestone.
+
+**v2.3 next.** Print lab integration (Mpix, Bay Photo, Shutterfly, resolution warning). Due September 30, 2026.
 
 **GitHub milestones:**
-- v2.2 — due August 31, 2026
+- v2.2 — due August 31, 2026 ✅ shipped Aug 27, 2026
 - v2.3 — due September 30, 2026
 - v3.0 — due October 31, 2026
 
@@ -29,11 +31,68 @@ This document is the persistent index of all design decisions, prompts, and arch
 - [x] Export/Import + Auto-Backup (E1, E2) → v2.0
 - [x] Mac migration using Export/Import
 - [x] Run N1, N2, N3 in Claude Code → v2.1
-- [x] Film strip clip fix (V2.2-A) → v2.2
-- [x] Auto-update check (V2.2-B) → v2.2
-- [ ] Tag and release v2.2
+- [x] Film strip clip fix (V2.2-A) → v2.2 (PR #22)
+- [x] Auto-update check (V2.2-B) → v2.2 (PR #23)
+- [x] latest.json date fix → v2.2 (PR #24)
+- [x] Tag and release v2.2 → v2.2.0 shipped Aug 27, 2026
+- [ ] Begin v2.3 print lab design + Claude Code prompts
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] iCloud Photos integration planning → v3.0
+
+---
+
+## Collaboration Process
+
+Frame is designed in Claude.ai and built in Claude Code, with Michael
+as the bridge between the two. This section defines how the two
+sessions stay in sync without overwriting each other's work.
+
+### Division of ownership
+
+| Domain | Owner | Notes |
+|---|---|---|
+| Feature design, architecture decisions | Claude.ai | What to build and why |
+| Claude Code prompt authoring | Claude.ai | Handed to Michael → Claude Code |
+| Branch names, release state, what's merged/tagged | Claude Code | Ground truth from the repo |
+| Design notes updates touching repo mechanics | Claude Code | Reconcile against real repo state |
+| Design notes updates: new features, decisions | Claude.ai → fragment | Additive, labeled, Claude Code merges |
+
+### The two-segment bridge
+
+```
+Claude.ai ←→ Michael    Design intent, decisions, prompts, narrative
+Michael ←→ Claude Code  Implementation, repo state, release mechanics
+```
+
+Michael carries design decisions from Claude.ai to Claude Code,
+and carries repo corrections from Claude Code back to Claude.ai.
+
+### Design update fragments
+
+When Claude.ai generates design notes content, it produces a labeled
+**fragment** rather than a direct rewrite of the doc. Claude Code reads
+the fragment, diffs against the current doc, and merges additively —
+preserving its own corrections.
+
+Fragment format:
+- Clearly labeled sections with ADD / UPDATE / APPEND intent
+- Explicit "do not overwrite" callouts for Claude Code-owned sections
+- Status language follows the agreed convention (see below)
+
+### Status language convention
+
+| State | Language to use |
+|---|---|
+| In design doc only, not yet run | "prompt written, not yet run" |
+| PR merged to master, no release yet | "built and merged, not yet tagged" |
+| git tag + GitHub Release confirmed | "✅ Shipped" |
+
+### Repo conventions
+
+- **Default branch: `master`** (not `main` — Michael's repos use original convention)
+- Release tags: `vX.X.X` format
+- "Shipped" requires both a git tag AND a GitHub Release with DMG attached
+- `latest.json` URL uses `master` branch — Claude.ai will not assert `main`
 
 ---
 
@@ -43,6 +102,8 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-08 | Collaboration process formalized: Claude.ai owns design intent + prompts; Claude Code owns repo ground truth + release state; design notes updates from Claude.ai arrive as labeled fragments for Claude Code to merge additively | Prevents overwrite of Claude Code corrections; prevents Claude.ai asserting wrong repo facts |
+| 2026-08 | Default branch confirmed as `master` (not `main`) — Claude.ai will not assert branch names without Claude Code confirmation; auto-update URL corrected in PR #23 | `master` is Michael's long-standing convention from original git/GitLab setup |
 | 2026-07 | Code signing + notarization added to v3.0 roadmap — Apple Developer account required; xattr workaround sufficient for personal use until then | Gatekeeper blocks unsigned apps with misleading "damaged" message |
 | 2026-07 | Dock icon F centering: F_X=24 in generate-icons.js, not 50 — opentype.js glyph.getPath(x) places LEFT EDGE at x, unlike SVG text-anchor=middle which centers at x. Do not revert to 50. | Root cause: different rendering pipelines, different reference points |
 | 2026-07 | Curator notes at three levels: session (SQLite), group (SQLite), global journal (flat .md file). Obsidian export one-way only. No in-Frame linking — leave that to Obsidian. | Frame captures notes in context with photos; Obsidian provides the knowledge graph across sessions |
@@ -560,17 +621,17 @@ Top film strip in the app icon bled past the rounded corner boundary in the uppe
 
 ---
 
-### Auto-Update Check ✅ *(v2.2 — built and verified, not yet tagged)*
+### Auto-Update Check ✅ *(v2.2 — merged PR [#23](https://github.com/muftring/frame/pull/23), closed issue [#18](https://github.com/muftring/frame/issues/18) "tier 1", shipped in v2.2.0)*
 
 On launch, Frame silently fetches a `latest.json` from the repo, compares to `app.getVersion()`, and shows a toast if a newer version is available: *"Frame 2.2.0 is available — download."* One click opens the GitHub releases page. No auto-download (requires code signing — deferred to v3.0).
 
 Fetches from `raw.githubusercontent.com/muftring/frame/master/latest.json` — note **`master`**, not `main`. This repo's default branch has always been `master` (the [GitHub Workflow](#github-workflow) section below said `main`; corrected there too).
 
-`latest.json` format:
+`latest.json` format (as actually shipped in v2.2.0 — released Aug 27, a few days ahead of the Aug 31 milestone):
 ```json
 {
   "version": "2.2.0",
-  "releaseDate": "2026-08-31",
+  "releaseDate": "2026-08-27",
   "releaseNotes": "Film strip clip fix, auto-update check",
   "downloadUrl": "https://github.com/muftring/frame/releases/latest"
 }
@@ -581,11 +642,11 @@ Shown as a dismissible toast, not a modal. Checks once per launch only.
 
 ---
 
-### Print Lab Integration 💭 *(v2.3 — due Sep 30)*
+### Print Lab Integration 💭 *(v2.3 — due Sep 30, tracked in [#20](https://github.com/muftring/frame/issues/20))*
 
 Send keeper photos directly to a print lab from the Publish module.
 
-**Recommended starting point: Mpix** — professional lab with a developer-friendly API, part of Miller's Lab group. Quality appropriate for a photography workflow app.
+**Recommended starting point: Mpix** — professional lab with a developer-friendly API, part of Miller's Lab group. Quality appropriate for a photography workflow app. *(Superseded by the API research below — Mpix turns out to have no public API. Bay Photo is the better starting point.)*
 
 **Frame's approach:** consistent with the orchestrator philosophy — Frame handles selection and handoff, the lab handles fulfillment.
 
@@ -597,6 +658,23 @@ Send keeper photos directly to a print lab from the Publish module.
 - For labs without APIs: Frame opens vendor upload page and stages files in a folder for manual upload
 
 **Labs to evaluate:** Mpix · Shutterfly · Bay Photo · WHCC · Artifact Uprising · CVS · Walgreens
+
+#### API research findings (2026-08-27)
+
+**Mpix** ([#25](https://github.com/muftring/frame/issues/25))**:** No public developer API available. Integration only possible through platforms like ShootProof or Pixieset that have partnership relationships with Mpix. Direct Frame integration not feasible without a formal partnership. Note: Mpix prints RGB files only — CMYK/grayscale files are rejected (relevant for the resolution warning system).
+
+**Bay Photo** ([#26](https://github.com/muftring/frame/issues/26))**:** API exists with token-based authentication. API access requires a professional account and approval — not self-serve. Bay Photo has a dedicated "Sports and Events Plus" product well-suited to lacrosse photography. Order Desk's integration confirms the API uses an access token provided by Bay Photo directly.
+
+**Shutterfly** ([#27](https://github.com/muftring/frame/issues/27)) is tracked as lower priority.
+
+**Recommended v2.3 scope (Option B — Hybrid approach):**
+1. Resolution warning system ([#28](https://github.com/muftring/frame/issues/28)) — build first, no API needed, immediately useful
+2. "Prepare print order" workflow — Frame selects photos, prompts for sizes, packages files into an organized folder, opens the vendor's upload page. Manual final step, but Frame does all the prep work.
+3. Bay Photo API — add when credentials are secured, as an enhancement to the manual flow.
+
+**Action needed:** Create a Bay Photo professional account and request API access — may take 1-2 weeks for approval. Build the resolution warning system and manual workflow first while waiting.
+
+**Stage for Upload** ([#29](https://github.com/muftring/frame/issues/29)) is a separate top-level GitHub issue — not part of print lab integration. Applies to TeamSnap, Sprocket Sports, and any future destination without an API.
 
 ---
 
@@ -829,8 +907,8 @@ in Claude Code sessions for traceability.
 
 | Milestone | Due date | Features |
 |---|---|---|
-| **v2.2** | August 31, 2026 | Film strip clip fix ([#17](https://github.com/muftring/frame/issues/17)), auto-update check at launch |
-| **v2.3** | September 30, 2026 | Print lab integration (Mpix, Shutterfly, others) |
+| **v2.2** ✅ | August 31, 2026 | Film strip clip fix ([#17](https://github.com/muftring/frame/issues/17)), auto-update check at launch — shipped Aug 27, 2026 |
+| **v2.3** | September 30, 2026 | Print lab integration (Mpix, Bay Photo, Shutterfly, others) |
 | **v3.0** | October 31, 2026 | Code signing + notarization, iCloud Photos, relative paths, theme system, snapshots, in-app help |
 
 See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milestones](https://github.com/muftring/frame/milestones) for full detail.
@@ -847,7 +925,7 @@ See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milest
 | v1.5.0 | Burst UI: compare view, Gallery, composite + Settings | ✅ Shipped |
 | v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
 | v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
-| v2.2 | Film strip clip fix, auto-update check | 🔨 In progress (due Aug 31) |
+| v2.2.0 | Film strip clip fix (PR #22), auto-update check (PR #23), latest.json date fix (PR #24) | ✅ Shipped |
 | v2.3 | Print lab integration | 💭 Planned (due Sep 30) |
 | v3.0 | Code signing + notarization, iCloud Photos, relative paths, themes, snapshots, in-app help | 💭 Planned (due Oct 31) |
 
