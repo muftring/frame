@@ -333,13 +333,17 @@ export default {
           await window.api.invoke('notes:updateGroup', groupId, note)
         }
         for (const file of group.files) {
+          const destPath = destDir + '/' + file.name
+          const meta = await window.api.invoke('img:getMetadata', destPath)
           await window.api.invoke('file:upsert', sessionId, groupId, {
             filename: file.name,
-            full_path: destDir + '/' + file.name,
+            full_path: destPath,
             original_path: file.path,
             size_bytes: file.size || null,
             exif_ts: file.timestamp ? new Date(file.timestamp).getTime() : null,
-            status: 'unreviewed'
+            status: 'unreviewed',
+            width: meta && !meta.error ? meta.width : null,
+            height: meta && !meta.error ? meta.height : null
           })
         }
       }

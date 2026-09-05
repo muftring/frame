@@ -10,6 +10,11 @@
       <button v-if="hasImage" class="btn" @click="saveCopy">Save Copy</button>
     </div>
 
+    <!-- Crop-assist handoff banner (from Print Order "Crop for W×H") -->
+    <div v-if="cropAssistTarget" class="crop-assist-banner">
+      Crop for {{ cropAssistTarget.printWidth }}&times;{{ cropAssistTarget.printHeight }} print — drag to position
+    </div>
+
     <!-- Panel tabs -->
     <div class="tabs" v-if="hasImage">
       <button
@@ -120,7 +125,8 @@ export default {
         { label: '3:2', value: 3 / 2 },
         { label: '1:1', value: 1 },
         { label: '16:9', value: 16 / 9 }
-      ]
+      ],
+      cropAssistTarget: null
     }
   },
   computed: {
@@ -140,7 +146,25 @@ export default {
     this.tempDir = await window.api.invoke('app:getTempDir')
     this._resizeHandler = () => this.draw()
     window.addEventListener('resize', this._resizeHandler)
-    if (this.imagePath) {
+
+    const pending = (await window.api.invoke('settings:get', 'editor.pendingCropRequest', null))?.value
+    if (pending && pending.filePath) {
+      await window.api.invoke('settings:set', 'editor.pendingCropRequest', null)
+      await this.loadFile(pending.filePath)
+      this.cropAssistTarget = { printWidth: pending.printWidth, printHeight: pending.printHeight }
+      this.activePanel = 'crop'
+      this.aspectRatio = pending.targetAspectRatio
+      // Show the locked ratio as a selected preset even when it doesn't
+      // match one of the fixed options (e.g. 8:10) — otherwise none of
+      // the aspect buttons highlight and the lock looks like "Free".
+      const printLabel = `${pending.printWidth}×${pending.printHeight}`
+      if (!this.aspectOptions.some(o => o.value === this.aspectRatio)) {
+        this.aspectOptions = [
+          { label: printLabel, value: this.aspectRatio },
+          ...this.aspectOptions
+        ]
+      }
+    } else if (this.imagePath) {
       await this.loadFile(this.imagePath)
     }
   },
@@ -520,6 +544,15 @@ export default {
 }
 
 .toolbar-spacer { flex: 1; }
+
+.crop-assist-banner {
+  padding: 6px 16px;
+  background: rgba(201, 168, 76, 0.12);
+  border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 12px;
+  flex-shrink: 0;
+}
 
 .file-name {
   font-size: 13px;

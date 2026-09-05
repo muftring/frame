@@ -158,6 +158,12 @@ function initSchema() {
   if (!filesCols.includes('burst_frame_order')) {
     db.prepare('ALTER TABLE files ADD COLUMN burst_frame_order INTEGER DEFAULT NULL').run()
   }
+  if (!filesCols.includes('width')) {
+    db.prepare('ALTER TABLE files ADD COLUMN width INTEGER DEFAULT NULL').run()
+  }
+  if (!filesCols.includes('height')) {
+    db.prepare('ALTER TABLE files ADD COLUMN height INTEGER DEFAULT NULL').run()
+  }
 
   const groupsCols = db.prepare('PRAGMA table_info(event_groups)').all().map(c => c.name)
   if (!groupsCols.includes('notes')) {
@@ -548,7 +554,9 @@ function fileUpsert(sessionId, groupId, fileData) {
           exif_ts = ?, status = COALESCE(?, status),
           edit_history = COALESCE(?, edit_history),
           published_to = COALESCE(?, published_to),
-          rating = COALESCE(?, rating)
+          rating = COALESCE(?, rating),
+          width = COALESCE(?, width),
+          height = COALESCE(?, height)
         WHERE id = ?
       `).run(
         groupId,
@@ -560,6 +568,8 @@ function fileUpsert(sessionId, groupId, fileData) {
         fileData.edit_history || null,
         fileData.published_to || null,
         fileData.rating != null ? fileData.rating : null,
+        fileData.width || null,
+        fileData.height || null,
         existing.id
       )
       return { id: existing.id }
@@ -567,8 +577,9 @@ function fileUpsert(sessionId, groupId, fileData) {
       const info = db.prepare(`
         INSERT INTO files
           (session_id, group_id, filename, full_path, original_path,
-           size_bytes, exif_ts, status, edit_history, published_to, rating, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           size_bytes, exif_ts, status, edit_history, published_to, rating,
+           width, height, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         sessionId,
         groupId,
@@ -581,6 +592,8 @@ function fileUpsert(sessionId, groupId, fileData) {
         fileData.edit_history || '[]',
         fileData.published_to || '[]',
         fileData.rating != null ? fileData.rating : 0,
+        fileData.width || null,
+        fileData.height || null,
         now
       )
       return { id: info.lastInsertRowid }
@@ -668,6 +681,49 @@ function fileSetRating(fileId, rating) {
     const db = getDb()
     db.prepare('UPDATE files SET rating = ? WHERE id = ?').run(rating, fileId)
     return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function fileGetById(fileId) {
+  try {
+    const db = getDb()
+    return db.prepare('SELECT * FROM files WHERE id = ?').get(fileId) || null
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function fileGetDimensions(fileId) {
+  try {
+    const db = getDb()
+    const row = db.prepare('SELECT width, height FROM files WHERE id = ?').get(fileId)
+    if (!row) return { error: 'File not found' }
+    return { width: row.width, height: row.height }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function fileUpdateDimensions(fileId, width, height) {
+  try {
+    const db = getDb()
+    db.prepare('UPDATE files SET width = ?, height = ? WHERE id = ?').run(width, height, fileId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+// Used by the one-time startup backfill for files imported before
+// width/height were tracked.
+function filesListMissingDimensions() {
+  try {
+    const db = getDb()
+    return db.prepare(
+      "SELECT id, full_path FROM files WHERE width IS NULL OR height IS NULL"
+    ).all()
   } catch (err) {
     return { error: err.message }
   }
@@ -1357,6 +1413,10 @@ module.exports = {
   fileListBySession,
   fileGetByPath,
   fileSetRating,
+  fileGetById,
+  fileGetDimensions,
+  fileUpdateDimensions,
+  filesListMissingDimensions,
   tagListDefinitions,
   tagCreateDefinition,
   tagAddToFile,
