@@ -18,7 +18,7 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v2.2 shipped.** Film strip clip fix (PR #22) + auto-update check (PR #23) + latest.json date fix (PR #24). Tagged and released August 27, 2026 — ahead of the August 31 milestone.
 
-**v2.3 next.** Print lab integration (Mpix, Bay Photo, Shutterfly, resolution warning). Due September 30, 2026.
+**v2.3 in progress.** Print order workflow: resolution + aspect ratio warnings, print order management, prepare print folder, manifest export, stage for upload, Bay Photo API. Six prompts (V2.3-A through V2.3-F), all written. V2.3-A built, merged (PR #35), not yet tagged. V2.3-B through V2.3-F not yet run. Due September 30, 2026.
 
 **GitHub milestones:**
 - v2.2 — due August 31, 2026 ✅ shipped Aug 27, 2026
@@ -35,7 +35,14 @@ This document is the persistent index of all design decisions, prompts, and arch
 - [x] Auto-update check (V2.2-B) → v2.2 (PR #23)
 - [x] latest.json date fix → v2.2 (PR #24)
 - [x] Tag and release v2.2 → v2.2.0 shipped Aug 27, 2026
-- [ ] Begin v2.3 print lab design + Claude Code prompts
+- [x] Resolution + aspect ratio warning system (V2.3-A) → v2.3 (PR #35, merged, not yet tagged)
+- [ ] Run V2.3-B (Print Order management) in Claude Code → v2.3
+- [ ] Run V2.3-C (Prepare print folder) in Claude Code → v2.3
+- [ ] Run V2.3-D (Print order manifest export) in Claude Code → v2.3
+- [ ] Run V2.3-E (Stage for Upload) in Claude Code → v2.3
+- [ ] Bay Photo professional account + API credentials
+- [ ] Run V2.3-F (Bay Photo API) in Claude Code, once credentials arrive → v2.3
+- [ ] Tag and release v2.3
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] iCloud Photos integration planning → v3.0
 
@@ -102,6 +109,16 @@ Fragment format:
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-09 | Stage for Upload (#29) made top-level issue separate from Print Lab Integration — applies to TeamSnap, Sprocket, any destination without an API; is its own workflow independent of print ordering | Grouping/sharing feature, not print-specific |
+| 2026-09 | Print Order management (#32) is a first-class Frame feature independent of any lab API — SQLite-backed, living doc with Markdown notes, status lifecycle, manifest export | API integration (Bay Photo) is just one delivery option at the end of the workflow |
+| 2026-09 | Manifest export uses Electron's built-in printToPDF via offscreen BrowserWindow — no additional PDF library needed | Chromium renderer already bundled in Electron; avoids puppeteer/wkhtmltopdf dependency |
+| 2026-09 | Bay Photo API mock mode via BAY_PHOTO_MOCK=true env var — full UI flow testable without credentials | Allows building V2.3-F before credentials arrive; mock ≠ skip, it's a real code path |
+| 2026-09 | Mpix has no public developer API — integration only possible through ShootProof/Pixieset partnership; not directly buildable in Frame | Confirmed from DPReview forum + search; Mpix issue kept open in case a partnership opportunity arises |
+| 2026-09 | v2.3 print order workflow: resolution warning + aspect ratio warning + crop assist + print order management + prepare folder + manifest export + stage for upload; Bay Photo API as optional enhancement layer | Full workflow has value independent of any API; manual upload to lab website is acceptable end step |
+| 2026-09 | Crop-assist UX: setting aspectRatio to a non-preset value (e.g. 0.8 for 8×10) constrained drag behavior correctly but left the toolbar visually indistinguishable from Free mode. Fix: dynamically prepend a labeled preset to aspectOptions in EditorModule.vue's mounted() hook — Vue's existing :class binding picks it up with zero template changes. Fixed by Claude Code without being asked | Design spec described the handoff but not every resulting visual state; Claude Code owns UI ground truth |
+| 2026-09 | V2.3-A verification checklist had one incorrect entry: "expect warn, ~162 DPI" for D80 at 16×20 — DPI figure correct but status wrong (162 < MIN_DPI_ACCEPTABLE 200 → 'error' not 'warn'). All other checklist examples verified correct, including the ~17% crop for 3:2 → 8×10 (16.7% exact 3:2, 16.3% D80 real sensor). Caught by Claude Code, implemented with correct thresholds, verified with 19 unit tests | Claude Code owns ground truth on computed values |
+| 2026-09 | Aspect ratio warning added to resolution warning system (V2.3-A) — same prompt, same infrastructure; aspect ratio mismatches more common than resolution failures for DSLR shooters | 3:2 sensor → 8×10 print causes ~17% crop, affects composition; lab sites handle this poorly |
+| 2026-09 | "Add to print order" keyboard shortcut: O in Sorter (alongside K keep, D delete) | Natural extension of the sort workflow; captures print intent at the moment of curation |
 | 2026-08 | Collaboration process formalized: Claude.ai owns design intent + prompts; Claude Code owns repo ground truth + release state; design notes updates from Claude.ai arrive as labeled fragments for Claude Code to merge additively | Prevents overwrite of Claude Code corrections; prevents Claude.ai asserting wrong repo facts |
 | 2026-08 | Default branch confirmed as `master` (not `main`) — Claude.ai will not assert branch names without Claude Code confirmation; auto-update URL corrected in PR #23 | `master` is Michael's long-standing convention from original git/GitLab setup |
 | 2026-07 | Code signing + notarization added to v3.0 roadmap — Apple Developer account required; xattr workaround sufficient for personal use until then | Gatekeeper blocks unsigned apps with misleading "damaged" message |
@@ -642,7 +659,7 @@ Shown as a dismissible toast, not a modal. Checks once per launch only.
 
 ---
 
-### Print Lab Integration 💭 *(v2.3 — due Sep 30, tracked in [#20](https://github.com/muftring/frame/issues/20))*
+### Print Lab Integration 🔨 *(v2.3 — due Sep 30, tracked in [#20](https://github.com/muftring/frame/issues/20) — all six prompts written, V2.3-A merged)*
 
 Send keeper photos directly to a print lab from the Publish module.
 
@@ -675,6 +692,156 @@ Send keeper photos directly to a print lab from the Publish module.
 **Action needed:** Create a Bay Photo professional account and request API access — may take 1-2 weeks for approval. Build the resolution warning system and manual workflow first while waiting.
 
 **Stage for Upload** ([#29](https://github.com/muftring/frame/issues/29)) is a separate top-level GitHub issue — not part of print lab integration. Applies to TeamSnap, Sprocket Sports, and any future destination without an API.
+
+The six prompts below (V2.3-A through V2.3-F) are the detailed breakdown of this hybrid-approach scope, one section per shippable unit — same pattern as Film Strip Clip Fix and Auto-Update Check above.
+
+---
+
+### Print Compatibility Warning System — V2.3-A 🔨 *(built and merged — PR [#35](https://github.com/muftring/frame/pull/35), issue [#28](https://github.com/muftring/frame/issues/28) — not yet tagged)*
+
+| Prompt | Description |
+|---|---|
+| V2.3-A | `printCompatibility.js` service — resolution check (DPI at target size), aspect ratio check (crop percent + severity), combined check, matching sizes finder. `print:checkCompatibility`, `print:getSizesForPhoto`, `print:getSizes` IPC channels. `PrintCompatibilityBadge.vue` and `PrintSizeSelector.vue` reusable components. Crop assist: `editor:openWithAspectRatio` opens Edit module with ratio locked. `width` + `height` columns on files table. 19 unit tests, all passing. |
+
+**Print size severity thresholds:**
+| Crop % | Status | Treatment |
+|---|---|---|
+| < 2% | ok | No warning |
+| 2–8% | minor | Small notice |
+| 8–15% | warn | Clear warning + crop offer |
+| > 15% | error | Strong warning + mandatory acknowledge |
+
+**Standard print sizes covered:** 4×6 · 5×7 · 8×10 · 8×12 · 11×14 · 12×18 · 16×20 · 20×24 · 20×30 · 24×36 · 4×4 · 8×8 · 10×10 · 6×18 · 8×24 · 12×36 (panoramic)
+
+**Key insight:** For D80 (3:2 sensor), perfect-fit sizes are 4×6, 8×12, 12×18, 20×30. The common 8×10 causes a ~17% crop (16.3% for the D80's real 1.494:1 sensor ratio, 16.7% for an exact 3:2) — Frame flags this as a significant mismatch (`error`, since it's above the 15% threshold).
+
+**Resolution check, D80 (3872×2592) at standard sizes — every value below reverified directly against the shipped code:**
+
+| Print size | Auto-rotated to | dpiW | dpiH | Limiting DPI | Status |
+|---|---|---|---|---|---|
+| 4×6 | 6×4 | 645 | 648 | 645 | ok |
+| 8×10 | 10×8 | 387 | 324 | 324 | ok |
+| 8×12 | 12×8 | 323 | 324 | 323 | ok |
+| 16×20 | 20×16 | 194 | 162 | **162** | **error** |
+| 20×30 | 30×20 | 129 | 130 | 129 | error |
+
+The original prompt's verification checklist stated 16×20 as "warn, ~162 DPI" — the DPI figure was correct, but 162 is below the module's own `MIN_DPI_ACCEPTABLE` (200), so it's `error`, not `warn`. Caught and corrected during implementation; the algorithm and thresholds themselves needed no changes, only the checklist's illustrative status label was wrong. Everything else in the original checklist — including the ~17% crop figure for 3:2 → 8×10 — held up exactly.
+
+---
+
+### Print Order Management — V2.3-B 📝 *(prompt written, not yet run · issue [#32](https://github.com/muftring/frame/issues/32))*
+
+| Prompt | Description |
+|---|---|
+| V2.3-B | `print_orders` + `print_order_items` SQLite tables. Seven IPC channels: create, list (with filter), get, update, addItem (runs compat check), updateItem, removeItem, archive. `PrintOrderPanel.vue` in Publish module — list view with filter (Active/Archived/All), detail view with items table, status lifecycle, Markdown notes, action buttons. `AddToOrderPopover.vue` for Sorter (O key) and Gallery (context menu + toolbar). |
+
+**Print order status lifecycle:**
+```
+preparing → ready → ordered → delivered → archived
+```
+
+**IPC channels:**
+```
+printOrder:create(sessionId, name)
+printOrder:list(filter, sessionId?)
+printOrder:get(orderId)
+printOrder:update(orderId, fields)
+printOrder:addItem(orderId, fileId, width, height, qty)
+printOrder:updateItem(itemId, fields)
+printOrder:removeItem(itemId)
+printOrder:archive(orderId)
+```
+
+**Three entry points for "Add to print order":**
+1. Sorter — keyboard shortcut **O**, action button
+2. Gallery — right-click context menu, image viewer toolbar
+3. Print Order panel — bulk add from keeper photos
+
+---
+
+### Prepare Print Folder — V2.3-C 📝 *(prompt written, not yet run · issue [#33](https://github.com/muftring/frame/issues/33), sub of #32)*
+
+| Prompt | Description |
+|---|---|
+| V2.3-C | `printOrder:prepareFolder(orderId)` — exports print-ready files to `~/Pictures/Frame Print Orders/[Order Name]/`. Full-resolution JPEG (quality 95, 4:4:4 chroma). Uses cropped file if `crop_applied = true`, otherwise original. Streams progress events. Auto-advances order status to 'ready'. RAW file handling: finds processed JPEG alongside original (Darktable export pattern), skips with clear error if not found. Filename collision resolution. `printOrder:revealFolder` opens folder in Finder. |
+
+**Output filename format:** `[original-name]_[W]x[H][_cropped].jpg` — example: `photo_0342_8x10_cropped.jpg`
+
+**Staged folder location:** `~/Pictures/Frame Print Orders/[Order Name]/`
+
+---
+
+### Print Order Manifest Export — V2.3-D 📝 *(prompt written, not yet run · issue [#34](https://github.com/muftring/frame/issues/34), sub of #32)*
+
+| Prompt | Description |
+|---|---|
+| V2.3-D | `printOrder:exportManifest(orderId, format, outputPath)` — exports Markdown (.md) or PDF. Markdown: table with checkboxes per item (filename, size, qty, status), order notes, totals. PDF: rendered via Electron's built-in `printToPDF` through an offscreen BrowserWindow — no additional library. Inline result with "Open ↗" after export. Optional: in-panel Markdown preview before export. |
+
+**Manifest format:**
+```markdown
+# Print Order — [Name]
+**Lab:** [lab]  ·  **Order #:** [num]  ·  **Total:** [amt]
+**Folder:** ~/Pictures/Frame Print Orders/[Name]/
+
+| ☐ | # | File | Size | Qty | Status |
+|---|---|---|---|---|---|
+| ☐ | 1 | photo_0342_8x10_cropped.jpg | 8×10 | 1 | ✓ Cropped |
+| ☐ | 2 | photo_0187.jpg | 4×6 | 6 | ✓ Ready |
+
+**Total prints: 7**
+
+## Order notes
+[Markdown notes from Frame]
+```
+
+---
+
+### Stage for Upload — V2.3-E 📝 *(prompt written, not yet run · issue [#29](https://github.com/muftring/frame/issues/29))*
+
+| Prompt | Description |
+|---|---|
+| V2.3-E | `uploadStagingService.js` with four export presets. `upload:stageFiles`, `upload:createFolder`, `upload:revealFolder`, `upload:getStagingRoot`, `upload:getPresets` IPC channels. `UploadStagingPanel.vue` in Publish module. Gallery multi-select → "Stage for upload" passes fileIds to panel. Settings: configurable staging root folder. RAW handling same pattern as V2.3-C. |
+
+**Export presets:**
+| Preset | Max dimension | Quality | Use case |
+|---|---|---|---|
+| Web optimized | 2000px | 82% | Most team sites |
+| Social / mobile | 1200px | 80% | Phone viewing |
+| Full resolution | None | 92% | High-quality archives |
+| TeamSnap | 2048px | 85% | TeamSnap uploads |
+
+**Staged folder location:** `~/Pictures/Frame Uploads/[Folder Name]/` (configurable in Settings)
+
+**Distinct from Prepare Print Folder:** print folder = full resolution, print-optimized JPEG. Stage for upload = web-optimized, smaller file size, for team site sharing. Different audiences, different needs.
+
+---
+
+### Bay Photo API Integration — V2.3-F 📝 *(prompt written, not yet run · issue [#26](https://github.com/muftring/frame/issues/26), sub of #20 · prerequisite: Bay Photo professional account + API token)*
+
+| Prompt | Description |
+|---|---|
+| V2.3-F | `bayPhotoService.js` — token-based auth, `request()` via Electron `net` module, `getProducts()`, `createOrder()`, `getOrderStatus()`, `uploadImage()` placeholder. `bayPhotoProducts.js` — product map (size+finish → product ID) and finish options. IPC channels: validateToken, syncProducts, getProducts, submitOrder, getOrderStatus. Settings Integrations section: token input (masked), validate indicator, product sync, product mapping table, default finish. `[Submit to Bay Photo]` button in PrintOrderPanel detail view with confirmation modal. Mock mode via `BAY_PHOTO_MOCK=true` env var for development without credentials. |
+
+**Print order submission flow:**
+```
+Configure token → Sync products → Prepare folder (V2.3-C)
+→ Submit to Bay Photo → Order number stored → Check status
+```
+
+**Two unknowns to confirm with Bay Photo when credentials arrive:**
+1. Actual API base URL (placeholder: `api.bayphoto.com/v1`)
+2. Image upload mechanism (multipart? URL reference?)
+
+**Mock mode:** full UI flow testable without credentials. Enable with `BAY_PHOTO_MOCK=true` in dev script.
+
+**IPC channels:**
+```
+bayPhoto:validateToken()
+bayPhoto:syncProducts()
+bayPhoto:getProducts()
+bayPhoto:submitOrder(orderId, finish)
+bayPhoto:getOrderStatus(bayOrderId)
+```
 
 ---
 
@@ -908,10 +1075,26 @@ in Claude Code sessions for traceability.
 | Milestone | Due date | Features |
 |---|---|---|
 | **v2.2** ✅ | August 31, 2026 | Film strip clip fix ([#17](https://github.com/muftring/frame/issues/17)), auto-update check at launch — shipped Aug 27, 2026 |
-| **v2.3** | September 30, 2026 | Print lab integration (Mpix, Bay Photo, Shutterfly, others) |
+| **v2.3** 🔨 | September 30, 2026 | Resolution + aspect ratio warnings ([#28](https://github.com/muftring/frame/issues/28), merged), Print Order management ([#32](https://github.com/muftring/frame/issues/32)), Prepare print folder ([#33](https://github.com/muftring/frame/issues/33)), Manifest export ([#34](https://github.com/muftring/frame/issues/34)), Stage for upload ([#29](https://github.com/muftring/frame/issues/29)), Bay Photo API ([#26](https://github.com/muftring/frame/issues/26), pending credentials) |
 | **v3.0** | October 31, 2026 | Code signing + notarization, iCloud Photos, relative paths, theme system, snapshots, in-app help |
 
 See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milestones](https://github.com/muftring/frame/milestones) for full detail.
+
+## GitHub Issues — v2.3
+
+Titles below are the actual issue titles as filed (verified via `gh issue view`), not paraphrased. "Status" is the GitHub issue's open/closed state — a still-open issue can have fully-merged code behind it (see #28, merged via PR #35 but left open pending the v2.3.0 tag).
+
+| Issue | Title | Type | Status |
+|---|---|---|---|
+| #20 | Print integration with vendors | Parent | Open |
+| #25 | Mpix integration | Sub of #20 | Open (no public API — low priority) |
+| #26 | V2.3-F — Bay Photo API Integration | Sub of #20 | Open (pending credentials) |
+| #27 | Shutterfly integration (lower priority) | Sub of #20 | Open (low priority) |
+| #28 | V2.3-A — Resolution + Aspect Ratio Warning System | Top-level | Open (merged via PR #35, not yet tagged) |
+| #29 | V2.3-E — Stage for Upload | Top-level | Open |
+| #32 | V2.3-B — Print Order Management | Top-level | Open |
+| #33 | V2.3-C — Prepare print folder | Sub of #32 | Open |
+| #34 | V2.3-D — Print Order Manifest export | Sub of #32 | Open |
 
 ## Version History
 
@@ -926,7 +1109,7 @@ See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milest
 | v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
 | v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
 | v2.2.0 | Film strip clip fix (PR #22), auto-update check (PR #23), latest.json date fix (PR #24) | ✅ Shipped |
-| v2.3 | Print lab integration | 💭 Planned (due Sep 30) |
+| v2.3 | Resolution + aspect ratio warnings (V2.3-A, PR #35 merged), Print Order management, prepare print folder, manifest export, stage for upload, Bay Photo API | 🔨 In progress (due Sep 30) |
 | v3.0 | Code signing + notarization, iCloud Photos, relative paths, themes, snapshots, in-app help | 💭 Planned (due Oct 31) |
 
 ---
