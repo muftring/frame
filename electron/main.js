@@ -301,6 +301,31 @@ ipcMain.handle('file:listBySession', (_, sessionId, filters) =>
 ipcMain.handle('file:getByPath', (_, filePath) => sessionStore.fileGetByPath(filePath))
 ipcMain.handle('file:setRating', (_, fileId, rating) => sessionStore.fileSetRating(fileId, rating))
 
+const printCompat = require('./services/printCompatibility')
+
+ipcMain.handle('print:checkCompatibility', (_, { fileId, printWidth, printHeight }) => {
+  const dims = sessionStore.fileGetDimensions(fileId)
+  if (dims.error || !dims.width || !dims.height) {
+    return { error: dims.error || 'No dimensions available for this file' }
+  }
+  return printCompat.checkPrintCompatibility(dims.width, dims.height, printWidth, printHeight)
+})
+
+ipcMain.handle('print:getSizesForPhoto', (_, { fileId }) => {
+  const dims = sessionStore.fileGetDimensions(fileId)
+  if (dims.error || !dims.width || !dims.height) {
+    return { error: dims.error || 'No dimensions available' }
+  }
+  const allSizes = printCompat.PRINT_SIZES.map(size => {
+    const compat = printCompat.checkPrintCompatibility(dims.width, dims.height, size.width, size.height)
+    return { ...size, ...compat }
+  })
+  const matching = printCompat.findMatchingSizes(dims.width, dims.height)
+  return { allSizes, matching }
+})
+
+ipcMain.handle('print:getSizes', () => printCompat.PRINT_SIZES)
+
 ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())
 ipcMain.handle('tag:createDefinition', (_, name, label, color, icon, shortcut) =>
   sessionStore.tagCreateDefinition(name, label, color, icon, shortcut))
@@ -447,6 +472,28 @@ async function runAutoBackup() {
   }
 }
 
+// One-time backfill for files imported before width/height were tracked
+// (added in V2.3-A). Runs in the background after the main window is
+// already shown — never awaited from the startup sequence — since a
+// large library could take a while and there's no reason to delay
+// showing the app for it. Progress is logged, not surfaced in the UI.
+async function backfillFileDimensions() {
+  const missing = sessionStore.filesListMissingDimensions()
+  if (!Array.isArray(missing) || !missing.length) return
+
+  console.log(`[dimensions] backfilling ${missing.length} file(s) missing width/height...`)
+  let done = 0
+  for (const f of missing) {
+    const meta = await imageProcessor.getMetadata(f.full_path)
+    if (meta && !meta.error && meta.width && meta.height) {
+      sessionStore.fileUpdateDimensions(f.id, meta.width, meta.height)
+    }
+    done++
+    if (done % 50 === 0) console.log(`[dimensions] ${done}/${missing.length}`)
+  }
+  console.log(`[dimensions] backfill complete: ${done}/${missing.length}`)
+}
+
 // GitHub raw URLs use the actual default branch name — this repo's is
 // "master", not "main". checkForUpdates() fails silently by design, so a
 // wrong branch name here wouldn't crash anything, it would just never
@@ -559,6 +606,30 @@ ipcMain.handle('settings:set', async (_, key, value) => {
   try {
     const store = await getStore()
     store.set(key, value)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// Bridges a print-size selection (fileId + target print dimensions) to the
+// Editor module's crop tool. Resolves the fileId to a real path here rather
+// than storing the bare id, since the renderer's EditorModule takes a file
+// path (imagePath prop), not a database id — no "look up file by id" round
+// trip needed on the consuming side.
+ipcMain.handle('editor:openWithAspectRatio', async (_, fileId, width, height) => {
+  try {
+    const file = sessionStore.fileGetById(fileId)
+    if (!file || file.error || !file.full_path) {
+      return { success: false, error: 'File not found' }
+    }
+    const store = await getStore()
+    store.set('editor.pendingCropRequest', {
+      filePath: file.full_path,
+      targetAspectRatio: width / height,
+      printWidth: width,
+      printHeight: height
+    })
     return { success: true }
   } catch (err) {
     return { success: false, error: err.message }
@@ -849,6 +920,8 @@ app.whenReady().then(async () => {
       win.webContents.send('app:updateAvailable', result)
     }
   }, 3000)
+
+  backfillFileDimensions().catch(err => console.error('[dimensions] backfill failed:', err.message))
 })
 
 app.on('window-all-closed', () => {
