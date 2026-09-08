@@ -100,6 +100,7 @@
       <div v-if="installedTools.darktable" class="ctx-item" @click="openInTool('darktable')">Open in Darktable</div>
       <div v-if="installedTools.rawtherapee" class="ctx-item" @click="openInTool('rawtherapee')">Open in RawTherapee</div>
       <div class="ctx-item" @click="revealInFinder">Reveal in Finder</div>
+      <div v-if="ctxImage && ctxImage.fileId" class="ctx-item" @click="openAddToOrderFromCtx">Add to print order &rarr;</div>
     </div>
     <div v-if="ctxMenu" class="ctx-backdrop" @click="ctxMenu = null"></div>
 
@@ -112,6 +113,16 @@
       @close="closeViewer"
       @prev="viewerPrev"
       @next="viewerNext"
+      @add-to-order="openAddToOrderFromViewer"
+    />
+
+    <!-- Add to print order -->
+    <AddToOrderPopover
+      v-if="addToOrderFileId"
+      :fileId="addToOrderFileId"
+      :anchor="addToOrderAnchor"
+      @close="addToOrderFileId = null"
+      @added="addToOrderFileId = null"
     />
 
   </div>
@@ -123,11 +134,12 @@ import SmartAlbumsPanel from './SmartAlbumsPanel.vue'
 import PanoSetView from './PanoSetView.vue'
 import BurstSetView from './BurstSetView.vue'
 import EmptyState from '../../components/EmptyState.vue'
+import AddToOrderPopover from '../../components/AddToOrderPopover.vue'
 
 export default {
   name: 'GalleryModule',
   inject: ['toast', 'session'],
-  components: { ImageViewer, SmartAlbumsPanel, PanoSetView, BurstSetView, EmptyState },
+  components: { ImageViewer, SmartAlbumsPanel, PanoSetView, BurstSetView, EmptyState, AddToOrderPopover },
   props: {
     sessionState:  { type: Object, default: null },
     activeSession: { type: Object, default: null },
@@ -150,7 +162,9 @@ export default {
       selectedSourceLabel: null,
       tagDefinitions: [],
       selectedPanoSetId: null,
-      selectedBurstSetId: null
+      selectedBurstSetId: null,
+      addToOrderFileId: null,
+      addToOrderAnchor: null
     }
   },
   computed: {
@@ -409,6 +423,19 @@ export default {
     async revealInFinder() {
       if (this.ctxImage) await window.api.invoke('tools:revealInFinder', this.ctxImage.path)
       this.ctxMenu = null
+    },
+
+    openAddToOrderFromCtx() {
+      if (!this.ctxImage?.fileId) return
+      this.addToOrderAnchor = { x: this.ctxMenu.x, y: this.ctxMenu.y }
+      this.addToOrderFileId = this.ctxImage.fileId
+      this.ctxMenu = null
+    },
+
+    openAddToOrderFromViewer() {
+      if (!this.viewerImage?.fileId) return
+      this.addToOrderAnchor = null
+      this.addToOrderFileId = this.viewerImage.fileId
     },
 
     saveScrollPos() {

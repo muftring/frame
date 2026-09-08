@@ -63,7 +63,7 @@
           <GalleryModule v-else-if="currentModule === 'gallery'" key="gallery" :session-state="galleryState" :active-session="activeSession" :initial-source="moduleData" @update-state="galleryState = $event" @navigate="handleNavigate" />
           <EditorModule v-else-if="currentModule === 'editor'" key="editor" :image-path="moduleData" />
           <ProcessModule v-else-if="currentModule === 'process'" key="process" @navigate="handleNavigate" />
-          <PublishModule v-else-if="currentModule === 'publish'" key="publish" />
+          <PublishModule v-else-if="currentModule === 'publish'" key="publish" @navigate="handleNavigate" />
           <JournalModule v-else-if="currentModule === 'journal'" key="journal" :active-session="activeSession" @navigate="handleNavigate" />
         </Transition>
       </div>

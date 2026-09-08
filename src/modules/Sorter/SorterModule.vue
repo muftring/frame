@@ -165,6 +165,12 @@
       </button>
       <button class="btn action-btn keep-btn" @click="keep">Keep (K)</button>
       <button class="btn action-btn delete-btn" @click="doTrash">Delete (D)</button>
+      <button
+        v-if="canAddToOrder"
+        class="btn action-btn order-btn"
+        title="Add to print order (O)"
+        @click="openAddToOrder"
+      >&#128424; Order</button>
       <button class="btn action-btn" @click="next" :disabled="currentIndex >= images.length - 1">Next</button>
       <button
         v-if="sessionMode && allReviewed && !sortAlreadyComplete"
@@ -210,19 +216,28 @@
       @close="closeBurstCompare"
       @kept="handleBurstKept"
     />
+
+    <!-- Add to print order -->
+    <AddToOrderPopover
+      v-if="addToOrderOpen"
+      :fileId="currentImage.fileId"
+      @close="addToOrderOpen = false"
+      @added="addToOrderOpen = false"
+    />
   </div>
 </template>
 
 <script>
 import BurstCompareView from './BurstCompareView.vue'
 import EmptyState from '../../components/EmptyState.vue'
+import AddToOrderPopover from '../../components/AddToOrderPopover.vue'
 
 const TAG_BADGE_ORDER = ['bw-candidate', 'pano-candidate', 'burst-candidate']
 const TAG_BADGE_ABBREV = { 'bw-candidate': 'B&W', 'pano-candidate': 'PANO', 'burst-candidate': 'BRST' }
 
 export default {
   name: 'SorterModule',
-  components: { BurstCompareView, EmptyState },
+  components: { BurstCompareView, EmptyState, AddToOrderPopover },
   inject: ['toast', 'session', 'updatePipeline'],
   props: {
     initialFolder: { type: String, default: null }
@@ -244,7 +259,8 @@ export default {
       bwPreviewActive: false,
       burstSetStatuses: {},
       showBurstCompare: false,
-      activeBurstSetId: null
+      activeBurstSetId: null,
+      addToOrderOpen: false
     }
   },
   computed: {
@@ -312,6 +328,9 @@ export default {
     currentBurstStatus() {
       if (!this.currentImage?.burstSetId) return null
       return this.burstSetStatuses[this.currentImage.burstSetId] || 'pending'
+    },
+    canAddToOrder() {
+      return !!(this.currentImage && this.currentImage.status === 'kept' && this.currentImage.fileId)
     }
   },
   watch: {
@@ -567,6 +586,9 @@ export default {
         case 'c': case 'C':
           if (!this.tagShortcutsSuppressed(e) && this.currentImage?.burstSetId) this.openBurstCompare()
           break
+        case 'o': case 'O':
+          if (!this.tagShortcutsSuppressed(e) && this.canAddToOrder) this.openAddToOrder()
+          break
         default: {
           const tagDef = this.tagShortcutMap[e.key.toLowerCase()]
           if (tagDef && !this.tagShortcutsSuppressed(e)) this.toggleFileTag(tagDef)
@@ -582,6 +604,10 @@ export default {
     },
     toggleBwPreview() {
       this.bwPreviewActive = !this.bwPreviewActive
+    },
+    openAddToOrder() {
+      if (!this.canAddToOrder) return
+      this.addToOrderOpen = true
     },
     async toggleFileTag(tagDef) {
       if (!this.currentImage?.fileId) return
@@ -1040,6 +1066,13 @@ export default {
   color: #ef5350;
 }
 .delete-btn:hover { background: rgba(239, 83, 80, 0.25); }
+
+.order-btn {
+  background: rgba(201, 168, 76, 0.12);
+  border-color: var(--color-accent, #c9a84c);
+  color: var(--color-accent, #c9a84c);
+}
+.order-btn:hover { background: rgba(201, 168, 76, 0.22); }
 
 .complete-btn {
   background: rgba(201, 168, 76, 0.15);

@@ -1,5 +1,14 @@
 <template>
   <div class="upload">
+    <!-- Top-level tabs -->
+    <div class="publish-tabs">
+      <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">Upload</button>
+      <button :class="{ active: activeTab === 'printOrders' }" @click="activeTab = 'printOrders'">Print Orders</button>
+    </div>
+
+    <PrintOrderPanel v-if="activeTab === 'printOrders'" @navigate="(...args) => $emit('navigate', ...args)" />
+
+    <template v-if="activeTab === 'upload'">
     <!-- Provider selection -->
     <div class="provider-cards">
       <div
@@ -163,15 +172,21 @@
       <div class="empty-title">Select a provider</div>
       <div class="empty-hint">Choose a destination above to get started</div>
     </div>
+    </template>
   </div>
 </template>
 
 <script>
+import PrintOrderPanel from './PrintOrderPanel.vue'
+
 export default {
   name: 'PublishModule',
+  components: { PrintOrderPanel },
   inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
+  emits: ['navigate'],
   data() {
     return {
+      activeTab: 'upload',
       providers: {},
       loadingProviders: true,
       selectedProvider: null,
@@ -375,6 +390,29 @@ export default {
   margin: 0 auto;
   overflow-y: auto;
   height: 100%;
+}
+
+.publish-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.publish-tabs button {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text2);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.publish-tabs button:hover { color: var(--text); }
+.publish-tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .provider-cards {

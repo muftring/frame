@@ -326,6 +326,43 @@ ipcMain.handle('print:getSizesForPhoto', (_, { fileId }) => {
 
 ipcMain.handle('print:getSizes', () => printCompat.PRINT_SIZES)
 
+ipcMain.handle('printOrder:create', (_, { sessionId, name, lab }) =>
+  sessionStore.printOrderCreate(sessionId, name, lab))
+ipcMain.handle('printOrder:list', (_, { filter, sessionId } = {}) =>
+  sessionStore.printOrderList(filter, sessionId))
+ipcMain.handle('printOrder:get', (_, { orderId }) => sessionStore.printOrderGet(orderId))
+ipcMain.handle('printOrder:update', (_, { orderId, fields }) => sessionStore.printOrderUpdate(orderId, fields))
+
+ipcMain.handle('printOrder:addItem', (_, { orderId, fileId, printWidth, printHeight, quantity }) => {
+  const dims = sessionStore.fileGetDimensions(fileId)
+  const compat = !dims.error && dims.width && dims.height
+    ? printCompat.checkPrintCompatibility(dims.width, dims.height, printWidth, printHeight)
+    : null
+  const result = sessionStore.printOrderAddItem(
+    orderId, fileId, printWidth, printHeight, quantity,
+    compat?.resolution?.status, compat?.aspectRatio?.status
+  )
+  return { ...result, compatibility: compat }
+})
+
+ipcMain.handle('printOrder:updateItem', (_, { itemId, fields }) => {
+  const updateFields = { ...fields }
+  if (fields.print_width || fields.print_height) {
+    const item = sessionStore.printOrderItemGetForCompat(itemId)
+    if (!item.error && item.width && item.height) {
+      const w = fields.print_width || item.print_width
+      const h = fields.print_height || item.print_height
+      const compat = printCompat.checkPrintCompatibility(item.width, item.height, w, h)
+      updateFields.resolution_status = compat.resolution.status
+      updateFields.aspect_ratio_status = compat.aspectRatio.status
+    }
+  }
+  return sessionStore.printOrderUpdateItem(itemId, updateFields)
+})
+
+ipcMain.handle('printOrder:removeItem', (_, { itemId }) => sessionStore.printOrderRemoveItem(itemId))
+ipcMain.handle('printOrder:archive', (_, { orderId }) => sessionStore.printOrderArchive(orderId))
+
 ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())
 ipcMain.handle('tag:createDefinition', (_, name, label, color, icon, shortcut) =>
   sessionStore.tagCreateDefinition(name, label, color, icon, shortcut))
