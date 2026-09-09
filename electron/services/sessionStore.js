@@ -132,6 +132,44 @@ function initSchema() {
       ambiguous_found INTEGER DEFAULT 0,
       created_at      INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS print_orders (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id   INTEGER REFERENCES sessions(id),
+      name         TEXT NOT NULL,
+      lab          TEXT,
+      status       TEXT NOT NULL DEFAULT 'preparing',
+      order_number TEXT,
+      order_total  TEXT,
+      notes        TEXT,
+      staged_path  TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS print_order_items (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id          INTEGER NOT NULL
+                          REFERENCES print_orders(id)
+                          ON DELETE CASCADE,
+      file_id           INTEGER NOT NULL REFERENCES files(id),
+      print_width       REAL NOT NULL,
+      print_height      REAL NOT NULL,
+      quantity          INTEGER NOT NULL DEFAULT 1,
+      crop_applied      INTEGER NOT NULL DEFAULT 0,
+      cropped_file_path TEXT,
+      resolution_status TEXT,
+      aspect_ratio_status TEXT,
+      notes             TEXT,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS
+      idx_print_orders_session ON print_orders(session_id);
+    CREATE INDEX IF NOT EXISTS
+      idx_print_order_items_order ON print_order_items(order_id);
+    CREATE INDEX IF NOT EXISTS
+      idx_print_order_items_file ON print_order_items(file_id);
   `)
   // migrations for columns added after initial release
   try { db.prepare('ALTER TABLE sessions ADD COLUMN summary TEXT').run() } catch { /* already exists */ }
@@ -1384,6 +1422,223 @@ function albumResolveFiles(albumId) {
   }
 }
 
+// --- print orders ---
+
+function printOrderCreate(sessionId, name, lab) {
+  try {
+    const db = getDb()
+    const info = db.prepare(`
+      INSERT INTO print_orders (session_id, name, lab)
+      VALUES (?, ?, ?)
+    `).run(sessionId || null, name, lab || null)
+    return { success: true, id: info.lastInsertRowid }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function printOrderList(filter = 'active', sessionId) {
+  try {
+    const db = getDb()
+    let where = ''
+    const params = []
+
+    if (filter === 'active') {
+      where = "WHERE po.status != 'archived'"
+    } else if (filter === 'archived') {
+      where = "WHERE po.status = 'archived'"
+    }
+    // filter === 'all' → no WHERE clause
+
+    if (sessionId) {
+      where += (where ? ' AND' : 'WHERE')
+      where += ' po.session_id = ?'
+      params.push(sessionId)
+    }
+
+    return db.prepare(`
+      SELECT
+        po.*,
+        COUNT(poi.id)  AS item_count,
+        SUM(poi.quantity) AS total_prints,
+        SUM(CASE WHEN poi.aspect_ratio_status IN ('warn','error')
+                 AND poi.crop_applied = 0
+            THEN 1 ELSE 0 END) AS pending_crops,
+        s.name AS session_name
+      FROM print_orders po
+      LEFT JOIN print_order_items poi ON poi.order_id = po.id
+      LEFT JOIN sessions s ON s.id = po.session_id
+      ${where}
+      GROUP BY po.id
+      ORDER BY po.updated_at DESC
+    `).all(...params)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function printOrderGet(orderId) {
+  try {
+    const db = getDb()
+    const order = db.prepare(`
+      SELECT po.*, s.name AS session_name
+      FROM print_orders po
+      LEFT JOIN sessions s ON s.id = po.session_id
+      WHERE po.id = ?
+    `).get(orderId)
+
+    if (!order) return { error: 'Order not found' }
+
+    const items = db.prepare(`
+      SELECT
+        poi.*,
+        f.filename, f.full_path,
+        f.width AS pixel_width,
+        f.height AS pixel_height
+      FROM print_order_items poi
+      JOIN files f ON f.id = poi.file_id
+      WHERE poi.order_id = ?
+      ORDER BY poi.created_at ASC
+    `).all(orderId)
+
+    return { ...order, items }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+const ALLOWED_PRINT_ORDER_FIELDS = ['name', 'lab', 'status', 'order_number', 'order_total', 'notes', 'staged_path']
+
+function printOrderUpdate(orderId, fields) {
+  try {
+    const db = getDb()
+    const updates = []
+    const values = []
+
+    for (const [key, val] of Object.entries(fields)) {
+      if (ALLOWED_PRINT_ORDER_FIELDS.includes(key)) {
+        updates.push(`${key} = ?`)
+        values.push(val)
+      }
+    }
+    if (!updates.length) return { success: false, error: 'No valid fields' }
+
+    updates.push("updated_at = datetime('now')")
+    values.push(orderId)
+
+    db.prepare(`
+      UPDATE print_orders
+      SET ${updates.join(', ')}
+      WHERE id = ?
+    `).run(...values)
+
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function printOrderAddItem(orderId, fileId, printWidth, printHeight, quantity, resolutionStatus, aspectRatioStatus) {
+  try {
+    const db = getDb()
+    const info = db.prepare(`
+      INSERT INTO print_order_items
+        (order_id, file_id, print_width, print_height,
+         quantity, resolution_status, aspect_ratio_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      orderId, fileId, printWidth, printHeight, quantity || 1,
+      resolutionStatus || null,
+      aspectRatioStatus || null
+    )
+
+    db.prepare(`UPDATE print_orders SET updated_at = datetime('now') WHERE id = ?`).run(orderId)
+
+    return { success: true, id: info.lastInsertRowid }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+// Used by the caller (main.js) to re-run the compatibility check when an
+// item's print size changes — needs the file's pixel dimensions alongside
+// the item's current print dimensions.
+function printOrderItemGetForCompat(itemId) {
+  try {
+    const db = getDb()
+    const row = db.prepare(`
+      SELECT poi.print_width, poi.print_height,
+             f.width, f.height
+      FROM print_order_items poi
+      JOIN files f ON f.id = poi.file_id
+      WHERE poi.id = ?
+    `).get(itemId)
+    if (!row) return { error: 'Item not found' }
+    return row
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+const ALLOWED_PRINT_ORDER_ITEM_FIELDS = [
+  'print_width', 'print_height', 'quantity', 'crop_applied',
+  'cropped_file_path', 'notes', 'resolution_status', 'aspect_ratio_status'
+]
+
+function printOrderUpdateItem(itemId, fields) {
+  try {
+    const db = getDb()
+    const updates = []
+    const values = []
+
+    for (const [key, val] of Object.entries(fields)) {
+      if (ALLOWED_PRINT_ORDER_ITEM_FIELDS.includes(key)) {
+        updates.push(`${key} = ?`)
+        values.push(val)
+      }
+    }
+    if (!updates.length) return { success: false }
+
+    values.push(itemId)
+    db.prepare(`
+      UPDATE print_order_items
+      SET ${updates.join(', ')} WHERE id = ?
+    `).run(...values)
+
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function printOrderRemoveItem(itemId) {
+  try {
+    const db = getDb()
+    const item = db.prepare('SELECT order_id FROM print_order_items WHERE id = ?').get(itemId)
+    db.prepare('DELETE FROM print_order_items WHERE id = ?').run(itemId)
+    if (item) {
+      db.prepare(`UPDATE print_orders SET updated_at = datetime('now') WHERE id = ?`).run(item.order_id)
+    }
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function printOrderArchive(orderId) {
+  try {
+    const db = getDb()
+    db.prepare(`
+      UPDATE print_orders
+      SET status = 'archived', updated_at = datetime('now')
+      WHERE id = ?
+    `).run(orderId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 module.exports = {
   sessionCreate,
   sessionList,
@@ -1449,5 +1704,14 @@ module.exports = {
   albumUpdate,
   albumDelete,
   albumPreview,
-  albumResolveFiles
+  albumResolveFiles,
+  printOrderCreate,
+  printOrderList,
+  printOrderGet,
+  printOrderUpdate,
+  printOrderAddItem,
+  printOrderItemGetForCompat,
+  printOrderUpdateItem,
+  printOrderRemoveItem,
+  printOrderArchive
 }

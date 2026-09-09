@@ -39,6 +39,12 @@
           @click.stop="showMeta = !showMeta"
           title="Image info (i)"
         >ⓘ</button>
+        <button
+          v-if="image.fileId"
+          class="bar-print-btn"
+          @click.stop="$emit('add-to-order')"
+          title="Add to print order"
+        >&#128424;</button>
       </div>
 
       <!-- Metadata panel — slides in from right -->
@@ -63,7 +69,7 @@ export default {
     hasPrev: { type: Boolean, default: false },
     hasNext: { type: Boolean, default: false }
   },
-  emits: ['close', 'prev', 'next'],
+  emits: ['close', 'prev', 'next', 'add-to-order'],
   data() {
     return { showMeta: false, bwPreviewActive: false }
   },
@@ -284,6 +290,28 @@ export default {
   color: #c9a84c;
   border-color: rgba(201, 168, 76, 0.5);
   background: rgba(201, 168, 76, 0.1);
+}
+
+.bar-print-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+  width: 28px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0;
+}
+.bar-print-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* ── Transitions ──────────────────────────────── */
