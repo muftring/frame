@@ -156,13 +156,36 @@
         <span v-if="pendingCropsCount" class="po-summary-warn">· Pending crops: {{ pendingCropsCount }}</span>
       </div>
 
-      <div class="po-actions">
+      <div class="po-actions" v-if="!preparing && !orderDetail.staged_path">
         <button
           class="btn"
           :disabled="pendingCropsCount > 0"
           :title="pendingCropsCount > 0 ? 'Crop pending items first' : ''"
+          @click="confirmPrepare = true"
         >Prepare folder &rarr;</button>
         <button class="btn">Export manifest &#9662;</button>
+      </div>
+
+      <div class="po-progress" v-else-if="preparing">
+        <div class="po-progress-bar">
+          <div class="po-progress-fill" :style="{ width: progressPercent + '%' }"></div>
+        </div>
+        <div class="po-progress-label">
+          Preparing {{ prepareProgress.current }} of {{ prepareProgress.total }} — {{ prepareProgress.filename }}
+        </div>
+      </div>
+
+      <div class="po-actions po-actions-prepared" v-else>
+        <span class="po-prepared-check">&check; Folder prepared</span>
+        <button class="btn" @click="openStagedFolder">Open folder &#8599;</button>
+        <button
+          class="btn"
+          :disabled="pendingCropsCount > 0"
+          :title="pendingCropsCount > 0 ? 'Crop pending items first' : ''"
+          @click="confirmPrepare = true"
+        >Re-prepare</button>
+        <button class="btn">Export manifest &#9662;</button>
+        <div class="po-staged-path">{{ orderDetail.staged_path }}</div>
       </div>
 
       <div class="po-notes">
@@ -197,6 +220,22 @@
           <button class="btn btn-primary" :disabled="!selectedToAdd.length" @click="confirmAddPhotos">
             Add {{ selectedToAdd.length || '' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prepare folder confirmation -->
+    <div v-if="confirmPrepare" class="modal-overlay" @click.self="confirmPrepare = false">
+      <div class="modal">
+        <h4>Prepare print folder?</h4>
+        <p>
+          This will copy {{ orderDetail.items.length }} file{{ orderDetail.items.length === 1 ? '' : 's' }} to:<br>
+          <code>~/Pictures/Frame Print Orders/{{ orderDetail.name }}/</code><br><br>
+          Files will be exported as high-quality JPEGs. Existing files in this folder will be overwritten.
+        </p>
+        <div class="modal-actions">
+          <button class="btn" @click="confirmPrepare = false">Cancel</button>
+          <button class="btn btn-primary" @click="prepareFolder">Prepare folder</button>
         </div>
       </div>
     </div>
@@ -251,7 +290,10 @@ export default {
       pickerOpen: false,
       availableFiles: [],
       selectedToAdd: [],
-      confirmArchive: false
+      confirmArchive: false,
+      confirmPrepare: false,
+      preparing: false,
+      prepareProgress: { current: 0, total: 0, filename: '' }
     }
   },
   computed: {
@@ -262,6 +304,10 @@ export default {
     pendingCropsCount() {
       if (!this.orderDetail) return 0
       return this.orderDetail.items.filter(i => this.itemNeedsCrop(i) && !i.crop_applied).length
+    },
+    progressPercent() {
+      if (!this.prepareProgress.total) return 0
+      return Math.round((this.prepareProgress.current / this.prepareProgress.total) * 100)
     }
   },
   watch: {
@@ -274,6 +320,12 @@ export default {
   },
   async created() {
     await this.loadOrders()
+    this._prepareProgressCleanup = window.api.on('printOrder:prepareFolderProgress', (data) => {
+      if (data.orderId === this.selectedOrderId) this.prepareProgress = data
+    })
+  },
+  beforeUnmount() {
+    if (this._prepareProgressCleanup) this._prepareProgressCleanup()
   },
   methods: {
     statusLabel(status) {
@@ -434,6 +486,25 @@ export default {
       await window.api.invoke('printOrder:archive', { orderId: this.orderDetail.id })
       this.confirmArchive = false
       this.backToList()
+    },
+    async prepareFolder() {
+      this.confirmPrepare = false
+      this.preparing = true
+      this.prepareProgress = { current: 0, total: this.orderDetail.items.length, filename: '' }
+
+      const result = await window.api.invoke('printOrder:prepareFolder', { orderId: this.orderDetail.id })
+      this.preparing = false
+
+      if (result.success) {
+        this.toast(`${result.successCount} files prepared in ~/Pictures/Frame Print Orders/${this.orderDetail.name}/`, 'success', null, 0)
+      } else {
+        this.toast(`Prepared ${result.successCount} files, ${result.errorCount} failed`, 'warn', null, 0)
+      }
+      await this.loadOrderDetail()
+      await this.loadOrders()
+    },
+    async openStagedFolder() {
+      await window.api.invoke('printOrder:revealFolder', { orderId: this.orderDetail.id })
     }
   }
 }
@@ -744,6 +815,41 @@ export default {
 .po-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.po-actions-prepared { position: relative; }
+.po-prepared-check {
+  color: var(--color-keep-hover);
+  font-size: var(--text-sm);
+}
+.po-staged-path {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.po-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.po-progress-bar {
+  height: 3px;
+  background: var(--color-surface-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.po-progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  transition: width 0.15s ease;
+}
+.po-progress-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 .po-notes {
@@ -775,6 +881,14 @@ export default {
   font-size: var(--text-sm);
   color: var(--color-text-2);
   margin-bottom: 16px;
+  line-height: 1.6;
+}
+.modal p code {
+  font-size: var(--text-xs);
+  background: var(--color-surface-3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
 }
 .modal-actions {
   display: flex;
