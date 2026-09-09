@@ -1625,6 +1625,33 @@ function printOrderRemoveItem(itemId) {
   }
 }
 
+function printOrderMarkPrepared(orderId, stagedPath) {
+  try {
+    const db = getDb()
+    db.prepare(`
+      UPDATE print_orders
+      SET staged_path = ?,
+          status = CASE WHEN status = 'preparing' THEN 'ready' ELSE status END,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(stagedPath, orderId)
+    return { success: true }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+function printOrderGetStagedPath(orderId) {
+  try {
+    const db = getDb()
+    const row = db.prepare('SELECT staged_path FROM print_orders WHERE id = ?').get(orderId)
+    if (!row) return { error: 'Order not found' }
+    return { stagedPath: row.staged_path }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function printOrderArchive(orderId) {
   try {
     const db = getDb()
@@ -1713,5 +1740,7 @@ module.exports = {
   printOrderItemGetForCompat,
   printOrderUpdateItem,
   printOrderRemoveItem,
+  printOrderMarkPrepared,
+  printOrderGetStagedPath,
   printOrderArchive
 }

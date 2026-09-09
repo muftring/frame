@@ -123,6 +123,22 @@ async function crop(filePath, region, outputPath) {
   }
 }
 
+// Full-resolution JPEG export for print labs — no resizing, quality 95,
+// 4:4:4 chroma subsampling (labs' own processing tends to compound the
+// artifacts from 4:2:0's chroma downsampling).
+async function exportForPrint(sourcePath, outputPath) {
+  try {
+    const buf = await sharp(await sharpSource(sourcePath))
+      .jpeg({ quality: 95, chromaSubsampling: '4:4:4' })
+      .toBuffer()
+    await fs.mkdir(path.dirname(outputPath), { recursive: true })
+    await fs.writeFile(outputPath, buf)
+    return { success: true, outputPath }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+}
+
 async function getMetadata(filePath) {
   try {
     const meta = await sharp(await sharpSource(filePath)).metadata()
@@ -505,6 +521,7 @@ module.exports = {
   rotate,
   crop,
   flip,
+  exportForPrint,
   getMetadata,
   getFullMetadata,
   getMetadataBatch,

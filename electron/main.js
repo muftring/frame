@@ -363,6 +363,115 @@ ipcMain.handle('printOrder:updateItem', (_, { itemId, fields }) => {
 ipcMain.handle('printOrder:removeItem', (_, { itemId }) => sessionStore.printOrderRemoveItem(itemId))
 ipcMain.handle('printOrder:archive', (_, { orderId }) => sessionStore.printOrderArchive(orderId))
 
+// sharp can't decode RAW sources directly (see imageProcessor.js's own HEIC
+// comment for the analogous libvips limitation) — prepareFolder falls back
+// to a sibling JPEG/TIFF next to the RAW file, matching the common
+// Darktable/RawTherapee "export alongside the original" convention.
+const RAW_EXTENSIONS = new Set(['.nef', '.cr2', '.cr3', '.arw', '.orf', '.rw2', '.dng', '.raf', '.nrw'])
+
+function sanitizeFolderName(name) {
+  return name
+    .replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .trim()
+    .slice(0, 80)
+}
+
+async function pathExists(filePath) {
+  return fsNode.access(filePath).then(() => true).catch(() => false)
+}
+
+async function findProcessedVersion(rawPath) {
+  const dir = path.dirname(rawPath)
+  const base = path.basename(rawPath, path.extname(rawPath))
+  for (const ext of ['.jpg', '.jpeg', '.tif', '.tiff', '.png']) {
+    const candidate = path.join(dir, base + ext)
+    if (await pathExists(candidate)) return candidate
+  }
+  return null
+}
+
+ipcMain.handle('printOrder:prepareFolder', async (event, { orderId }) => {
+  const order = sessionStore.printOrderGet(orderId)
+  if (order.error) return { success: false, error: order.error }
+  if (!order.items.length) return { success: false, error: 'Order has no items' }
+
+  const safeOrderName = sanitizeFolderName(order.name)
+  const orderDir = path.join(os.homedir(), 'Pictures', 'Frame Print Orders', safeOrderName)
+  await fsNode.mkdir(orderDir, { recursive: true })
+
+  const results = []
+  let successCount = 0
+  let errorCount = 0
+  const usedNames = new Set()
+
+  for (const item of order.items) {
+    try {
+      let sourcePath = (item.crop_applied && item.cropped_file_path && await pathExists(item.cropped_file_path))
+        ? item.cropped_file_path
+        : item.full_path
+
+      const ext = path.extname(sourcePath).toLowerCase()
+      if (RAW_EXTENSIONS.has(ext)) {
+        const processed = await findProcessedVersion(sourcePath)
+        if (processed) {
+          sourcePath = processed
+        } else {
+          results.push({ itemId: item.id, success: false, error: 'RAW file — process in Darktable first, or export a JPEG version' })
+          errorCount++
+          continue
+        }
+      }
+
+      const base = path.basename(item.filename, path.extname(item.filename))
+      const sizeTag = `${item.print_width}x${item.print_height}`
+      const cropTag = item.crop_applied ? '_cropped' : ''
+
+      // Collision check is scoped to this run only (usedNames), not to
+      // pre-existing files on disk — a re-prepare of the same order should
+      // overwrite its own prior output in place, not accumulate copies.
+      let outName = `${base}_${sizeTag}${cropTag}.jpg`
+      let counter = 2
+      while (usedNames.has(outName)) {
+        outName = `${base}_${sizeTag}${cropTag}_${counter}.jpg`
+        counter++
+      }
+      usedNames.add(outName)
+      const outPath = path.join(orderDir, outName)
+
+      const exportResult = await imageProcessor.exportForPrint(sourcePath, outPath)
+      if (!exportResult.success) throw new Error(exportResult.error)
+
+      sessionStore.printOrderUpdateItem(item.id, { cropped_file_path: outPath })
+
+      results.push({ itemId: item.id, filename: outName, path: outPath, success: true })
+      successCount++
+    } catch (err) {
+      results.push({ itemId: item.id, success: false, error: err.message })
+      errorCount++
+    }
+
+    event.sender.send('printOrder:prepareFolderProgress', {
+      orderId,
+      current: successCount + errorCount,
+      total: order.items.length,
+      filename: results[results.length - 1].filename || item.filename
+    })
+  }
+
+  sessionStore.printOrderMarkPrepared(orderId, orderDir)
+
+  return { success: errorCount === 0, orderDir, successCount, errorCount, results }
+})
+
+ipcMain.handle('printOrder:revealFolder', async (_, { orderId }) => {
+  const result = sessionStore.printOrderGetStagedPath(orderId)
+  if (result.error || !result.stagedPath) return { success: false, error: result.error || 'No folder prepared yet' }
+  shell.openPath(result.stagedPath)
+  return { success: true }
+})
+
 ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())
 ipcMain.handle('tag:createDefinition', (_, name, label, color, icon, shortcut) =>
   sessionStore.tagCreateDefinition(name, label, color, icon, shortcut))
