@@ -156,6 +156,11 @@
         <span v-if="pendingCropsCount" class="po-summary-warn">· Pending crops: {{ pendingCropsCount }}</span>
       </div>
 
+      <button class="btn-sm po-preview-toggle" @click="togglePreview">
+        {{ showManifestPreview ? 'Hide' : 'Preview' }} manifest
+      </button>
+      <div v-if="showManifestPreview" class="po-manifest-preview" v-html="renderedManifestPreview"></div>
+
       <div class="po-actions" v-if="!preparing && !orderDetail.staged_path">
         <button
           class="btn"
@@ -163,7 +168,14 @@
           :title="pendingCropsCount > 0 ? 'Crop pending items first' : ''"
           @click="confirmPrepare = true"
         >Prepare folder &rarr;</button>
-        <button class="btn">Export manifest &#9662;</button>
+        <div class="po-manifest-dropdown">
+          <button class="btn" @click="manifestMenuOpen = !manifestMenuOpen">Export manifest &#9662;</button>
+          <div v-if="manifestMenuOpen" class="po-manifest-menu">
+            <div class="po-manifest-menu-item" @click="exportManifest('md')">Export as Markdown (.md)</div>
+            <div class="po-manifest-menu-item" @click="exportManifest('pdf')">Export as PDF (.pdf)</div>
+          </div>
+          <div v-if="manifestMenuOpen" class="po-manifest-menu-backdrop" @click="manifestMenuOpen = false"></div>
+        </div>
       </div>
 
       <div class="po-progress" v-else-if="preparing">
@@ -184,8 +196,19 @@
           :title="pendingCropsCount > 0 ? 'Crop pending items first' : ''"
           @click="confirmPrepare = true"
         >Re-prepare</button>
-        <button class="btn">Export manifest &#9662;</button>
+        <div class="po-manifest-dropdown">
+          <button class="btn" @click="manifestMenuOpen = !manifestMenuOpen">Export manifest &#9662;</button>
+          <div v-if="manifestMenuOpen" class="po-manifest-menu">
+            <div class="po-manifest-menu-item" @click="exportManifest('md')">Export as Markdown (.md)</div>
+            <div class="po-manifest-menu-item" @click="exportManifest('pdf')">Export as PDF (.pdf)</div>
+          </div>
+          <div v-if="manifestMenuOpen" class="po-manifest-menu-backdrop" @click="manifestMenuOpen = false"></div>
+        </div>
         <div class="po-staged-path">{{ orderDetail.staged_path }}</div>
+      </div>
+
+      <div v-if="manifestExportPath" class="po-manifest-result">
+        Saved to {{ manifestExportPath }} · <a @click="openExportedManifest">Open &#8599;</a>
       </div>
 
       <div class="po-notes">
@@ -256,6 +279,7 @@
 </template>
 
 <script>
+import { marked } from 'marked'
 import EmptyState from '../../components/EmptyState.vue'
 import MarkdownEditor from '../../components/MarkdownEditor.vue'
 import PrintSizeSelector from '../../components/PrintSizeSelector.vue'
@@ -293,7 +317,11 @@ export default {
       confirmArchive: false,
       confirmPrepare: false,
       preparing: false,
-      prepareProgress: { current: 0, total: 0, filename: '' }
+      prepareProgress: { current: 0, total: 0, filename: '' },
+      manifestMenuOpen: false,
+      manifestExportPath: null,
+      showManifestPreview: false,
+      manifestPreviewMd: ''
     }
   },
   computed: {
@@ -308,6 +336,9 @@ export default {
     progressPercent() {
       if (!this.prepareProgress.total) return 0
       return Math.round((this.prepareProgress.current / this.prepareProgress.total) * 100)
+    },
+    renderedManifestPreview() {
+      return this.manifestPreviewMd ? marked(this.manifestPreviewMd) : ''
     }
   },
   watch: {
@@ -315,6 +346,9 @@ export default {
       this.loadOrders()
     },
     async selectedOrderId(id) {
+      this.manifestExportPath = null
+      this.showManifestPreview = false
+      this.manifestPreviewMd = ''
       if (id) await this.loadOrderDetail()
     }
   },
@@ -505,6 +539,42 @@ export default {
     },
     async openStagedFolder() {
       await window.api.invoke('printOrder:revealFolder', { orderId: this.orderDetail.id })
+    },
+    async togglePreview() {
+      this.showManifestPreview = !this.showManifestPreview
+      if (this.showManifestPreview && !this.manifestPreviewMd) {
+        const result = await window.api.invoke('printOrder:previewManifest', { orderId: this.orderDetail.id })
+        this.manifestPreviewMd = result.markdown || ''
+      }
+    },
+    async exportManifest(format) {
+      this.manifestMenuOpen = false
+      const ext = format === 'pdf' ? 'pdf' : 'md'
+      const defaultName = this.orderDetail.name
+        .replace(/[/\\:*?"<>|]/g, '-')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-') + '.' + ext
+
+      const { canceled, filePath } = await window.api.invoke('dialog:showSaveDialog', {
+        defaultPath: defaultName,
+        filters: format === 'pdf' ? [{ name: 'PDF', extensions: ['pdf'] }] : [{ name: 'Markdown', extensions: ['md'] }],
+        title: 'Export print order manifest'
+      })
+      if (canceled || !filePath) return
+
+      const result = await window.api.invoke('printOrder:exportManifest', {
+        orderId: this.orderDetail.id, format, outputPath: filePath
+      })
+      if (result.success) {
+        this.manifestExportPath = result.outputPath
+        this.toast('Manifest exported', 'success', null, 0)
+      } else {
+        this.toast('Export failed — ' + result.error, 'error')
+      }
+    },
+    async openExportedManifest() {
+      if (this.manifestExportPath) await window.api.invoke('tools:revealInFinder', this.manifestExportPath)
     }
   }
 }
@@ -849,6 +919,93 @@ export default {
 }
 .po-progress-label {
   font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.po-manifest-dropdown {
+  position: relative;
+}
+.po-manifest-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--z-panel);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 190px;
+  overflow: hidden;
+}
+.po-manifest-menu-item {
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.po-manifest-menu-item:hover {
+  background: var(--color-surface-2);
+}
+.po-manifest-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-panel) - 1);
+}
+
+.po-manifest-result {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+.po-manifest-result a {
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.po-manifest-result a:hover {
+  text-decoration: underline;
+}
+
+.po-preview-toggle {
+  align-self: flex-start;
+}
+
+.po-manifest-preview {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: 1.6;
+}
+.po-manifest-preview :deep(h1),
+.po-manifest-preview :deep(h2) {
+  margin: 10px 0 6px;
+  font-weight: 500;
+}
+.po-manifest-preview :deep(h1) { font-size: var(--text-lg); }
+.po-manifest-preview :deep(h2) { font-size: var(--text-md); }
+.po-manifest-preview :deep(p) { margin-bottom: 6px; }
+.po-manifest-preview :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 10px 0;
+}
+.po-manifest-preview :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: var(--text-xs);
+}
+.po-manifest-preview :deep(th),
+.po-manifest-preview :deep(td) {
+  border: 1px solid var(--color-border-2);
+  padding: 4px 8px;
+  text-align: left;
+}
+.po-manifest-preview :deep(em) {
   color: var(--color-text-3);
 }
 
