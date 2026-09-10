@@ -472,6 +472,61 @@ ipcMain.handle('printOrder:revealFolder', async (_, { orderId }) => {
   return { success: true }
 })
 
+const manifestExport = require('./services/manifestExport')
+
+// Renders manifest Markdown to PDF via an offscreen BrowserWindow's own
+// printToPDF — same Chromium renderer Frame's UI already uses, so no
+// puppeteer/wkhtmltopdf dependency. marginType 'none' because buildPdfHtml's
+// own <body> already carries 32px/40px padding; Chromium's default print
+// margins would stack on top of that and push the table off the page.
+async function exportManifestPdf(markdown, outputPath) {
+  const { marked } = require('marked')
+  const html = manifestExport.buildPdfHtml(marked(markdown))
+
+  const pdfWin = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } })
+  try {
+    await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+    const pdfBuffer = await pdfWin.webContents.printToPDF({
+      pageSize: 'Letter',
+      printBackground: true,
+      landscape: false,
+      margins: { marginType: 'none' }
+    })
+    await fsNode.writeFile(outputPath, pdfBuffer)
+  } finally {
+    pdfWin.destroy()
+  }
+}
+
+ipcMain.handle('printOrder:exportManifest', async (_, { orderId, format, outputPath }) => {
+  const order = sessionStore.printOrderGet(orderId)
+  if (order.error) return { success: false, error: order.error }
+
+  try {
+    const markdown = manifestExport.buildManifestMarkdown(order, order.items)
+    if (format === 'md') {
+      await fsNode.writeFile(outputPath, markdown, 'utf8')
+    } else if (format === 'pdf') {
+      await exportManifestPdf(markdown, outputPath)
+    } else {
+      return { success: false, error: 'Unknown format' }
+    }
+    return { success: true, outputPath }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('printOrder:previewManifest', (_, { orderId }) => {
+  const order = sessionStore.printOrderGet(orderId)
+  if (order.error) return { error: order.error }
+  return { markdown: manifestExport.buildManifestMarkdown(order, order.items) }
+})
+
+ipcMain.handle('dialog:showSaveDialog', async (_, options) => {
+  return dialog.showSaveDialog(options)
+})
+
 ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())
 ipcMain.handle('tag:createDefinition', (_, name, label, color, icon, shortcut) =>
   sessionStore.tagCreateDefinition(name, label, color, icon, shortcut))
