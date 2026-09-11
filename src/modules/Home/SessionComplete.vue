@@ -91,6 +91,9 @@
         <button class="sc-btn sc-btn-secondary" @click="$emit('new-session')">
           Start new session
         </button>
+        <button class="sc-btn sc-btn-ghost" @click="stageForUpload">
+          Stage keepers for upload
+        </button>
         <button class="sc-btn sc-btn-ghost" @click="$emit('archive')">
           Archive session
         </button>
@@ -107,7 +110,7 @@ export default {
   props: {
     summary: { type: Object, default: () => ({}) }
   },
-  emits: ['view-gallery', 'new-session', 'archive'],
+  emits: ['view-gallery', 'new-session', 'archive', 'stage-upload'],
   data() {
     return {
       keptFiles: [],
@@ -166,6 +169,17 @@ export default {
     }
   },
   methods: {
+    // keptFiles is sliced to 40 for the thumbnail strip — re-fetch the
+    // full list here so large sessions still stage every keeper.
+    async stageForUpload() {
+      if (!this.session?.id) return
+      const files = await window.api.invoke('file:listBySession', this.session.id, { status: 'kept' })
+      if (!Array.isArray(files) || !files.length) {
+        this.toast('No kept files to stage', 'info')
+        return
+      }
+      this.$emit('stage-upload', files.map(f => f.id))
+    },
     async loadThumbnails() {
       for (let i = 0; i < this.keptFiles.length; i++) {
         const f = this.keptFiles[i]

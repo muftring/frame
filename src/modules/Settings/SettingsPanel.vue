@@ -274,6 +274,16 @@
             <ImportPanel ref="importPanel" />
             <div class="library-divider"></div>
             <BackupPanel />
+            <div class="library-divider"></div>
+            <div class="setting-row">
+              <label>Upload staging folder</label>
+              <div class="path-input">
+                <span class="path-value">{{ uploadStagingRoot || defaultUploadStagingRoot }}</span>
+                <button class="btn-sm" @click="pickUploadStagingRoot">Browse&hellip;</button>
+                <a v-if="uploadStagingRoot" class="clear-link" @click="resetUploadStagingRoot">Reset to default</a>
+              </div>
+              <div class="path-hint">Where "Stage for upload" exports photos by default.</div>
+            </div>
           </section>
 
           <!-- Thumbnail cache -->
@@ -444,7 +454,9 @@ export default {
       updateHasUpdate: false,
       updateDownloadUrl: null,
       updateLastChecked: null,
-      updateStatusFadeTimer: null
+      updateStatusFadeTimer: null,
+      uploadStagingRoot: null,
+      defaultUploadStagingRoot: '~/Pictures/Frame Uploads'
     }
   },
   computed: {
@@ -478,6 +490,7 @@ export default {
     this.loadCacheInfo()
     this.appVersion = await window.api.invoke('app:getVersion')
     this.updateLastChecked = (await window.api.invoke('settings:get', 'updateLastChecked', null))?.value || null
+    this.uploadStagingRoot = (await window.api.invoke('settings:get', 'upload.stagingRoot', null))?.value || null
     this._keyHandler = (e) => { if (e.key === 'Escape') this.$emit('close') }
     window.addEventListener('keydown', this._keyHandler)
 
@@ -560,6 +573,16 @@ export default {
     },
     clearSetting(key) {
       this.settings[key] = null
+    },
+    async pickUploadStagingRoot() {
+      const folder = await window.api.invoke('dialog:openFolder')
+      if (!folder) return
+      this.uploadStagingRoot = folder
+      await window.api.invoke('settings:set', 'upload.stagingRoot', folder)
+    },
+    async resetUploadStagingRoot() {
+      this.uploadStagingRoot = null
+      await window.api.invoke('settings:set', 'upload.stagingRoot', null)
     },
     async openUrl(u) {
       await window.api.invoke('shell:openExternal', u)
@@ -742,6 +765,15 @@ export default {
   align-items: center;
   gap: 6px;
 }
+
+.clear-link {
+  font-size: 11px;
+  color: var(--text2);
+  cursor: pointer;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.clear-link:hover { color: var(--text); }
 
 .path-value {
   flex: 1;

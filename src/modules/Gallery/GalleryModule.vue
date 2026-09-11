@@ -7,6 +7,11 @@
       <span v-if="activeLabel" class="folder-name">{{ activeLabel }}</span>
       <span v-else-if="folderPath" class="folder-name" :title="folderPath">{{ folderDisplayName }}</span>
       <span v-if="images.length" class="image-count">{{ images.length }} images</span>
+      <span v-if="selectedFileIds.length" class="selection-summary">
+        {{ selectedFileIds.length }} selected
+        <a @click="stageSelectionForUpload">Stage for upload</a>
+        <a @click="selectedFileIds = []">Clear</a>
+      </span>
     </div>
 
     <!-- Body: sidebar + main -->
@@ -72,13 +77,15 @@
               v-for="(img, i) in images"
               :key="img.path"
               class="grid-cell"
+              :class="{ selected: img.fileId && selectedFileIds.includes(img.fileId) }"
               :data-index="i"
               ref="cells"
-              @click="openViewer(i)"
+              @click="handleCellClick($event, img, i)"
               @contextmenu.prevent="showContextMenu($event, img)"
             >
               <img v-if="img.thumbnail" :src="img.thumbnail" class="grid-thumb" />
               <div v-else class="grid-placeholder skeleton"></div>
+              <div class="grid-select-badge" v-if="img.fileId && selectedFileIds.includes(img.fileId)">&check;</div>
               <div class="grid-tag-badges" v-if="img.tags && img.tags.length">
                 <span
                   v-for="tagName in img.tags.slice(0, 2)"
@@ -101,6 +108,7 @@
       <div v-if="installedTools.rawtherapee" class="ctx-item" @click="openInTool('rawtherapee')">Open in RawTherapee</div>
       <div class="ctx-item" @click="revealInFinder">Reveal in Finder</div>
       <div v-if="ctxImage && ctxImage.fileId" class="ctx-item" @click="openAddToOrderFromCtx">Add to print order &rarr;</div>
+      <div v-if="ctxImage && ctxImage.fileId" class="ctx-item" @click="stageForUploadFromCtx">{{ ctxStageLabel }}</div>
     </div>
     <div v-if="ctxMenu" class="ctx-backdrop" @click="ctxMenu = null"></div>
 
@@ -164,10 +172,26 @@ export default {
       selectedPanoSetId: null,
       selectedBurstSetId: null,
       addToOrderFileId: null,
-      addToOrderAnchor: null
+      addToOrderAnchor: null,
+      selectedFileIds: []
     }
   },
   computed: {
+    // Right-clicking a photo that's part of an active multi-selection
+    // stages the whole selection; right-clicking any other photo (or with
+    // no multi-selection active) stages just that one.
+    ctxStageLabel() {
+      const n = this.ctxStageFileIds.length
+      return n > 1 ? `Stage for upload (${n} photos) →` : 'Stage for upload →'
+    },
+    ctxStageFileIds() {
+      if (!this.ctxImage?.fileId) return []
+      if (this.selectedFileIds.length > 1 && this.selectedFileIds.includes(this.ctxImage.fileId)) {
+        // Copy, not the reactive array itself — see stageForUploadFromCtx.
+        return [...this.selectedFileIds]
+      }
+      return [this.ctxImage.fileId]
+    },
     folderDisplayName() {
       if (!this.folderPath) return ''
       const parts = this.folderPath.replace(/\\/g, '/').split('/')
@@ -438,6 +462,36 @@ export default {
       this.addToOrderFileId = this.viewerImage.fileId
     },
 
+    // Plain click opens the viewer as before and drops any active
+    // multi-selection (matches common file-manager conventions: a plain
+    // click means "look at this one"). Cmd/ctrl-click toggles that image
+    // in the multi-selection instead, for the "select several, then
+    // stage for upload" flow — only session-linked images (with a
+    // fileId) can be staged, so folder-browsing images are ignored here.
+    handleCellClick(e, img, i) {
+      if ((e.metaKey || e.ctrlKey) && img.fileId) {
+        this.toggleSelect(img.fileId)
+        return
+      }
+      if (this.selectedFileIds.length) this.selectedFileIds = []
+      this.openViewer(i)
+    },
+    toggleSelect(fileId) {
+      const idx = this.selectedFileIds.indexOf(fileId)
+      if (idx === -1) this.selectedFileIds.push(fileId)
+      else this.selectedFileIds.splice(idx, 1)
+    },
+    stageSelectionForUpload() {
+      if (!this.selectedFileIds.length) return
+      this.$emit('navigate', 'publish', { type: 'stage-upload', fileIds: [...this.selectedFileIds] })
+    },
+    stageForUploadFromCtx() {
+      const fileIds = this.ctxStageFileIds
+      this.ctxMenu = null
+      if (!fileIds.length) return
+      this.$emit('navigate', 'publish', { type: 'stage-upload', fileIds })
+    },
+
     saveScrollPos() {
       if (this.$refs.gridWrap) this.savedScrollTop = this.$refs.gridWrap.scrollTop
     },
@@ -501,6 +555,20 @@ export default {
   color: var(--text2);
   margin-left: auto;
   flex-shrink: 0;
+}
+
+.selection-summary {
+  font-size: 12px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.selection-summary a {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* ── Body ─────────────────────────────────────── */
@@ -586,6 +654,26 @@ export default {
   background: var(--surface);
 }
 .grid-cell:hover .grid-label { opacity: 1; }
+.grid-cell.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.grid-select-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 .grid-thumb {
   width: 100%;
