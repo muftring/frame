@@ -71,6 +71,12 @@ written as Photos keywords on iCloud import. A session complete screen
 celebrates what you did: photos kept, keep rate, destinations published to,
 and a strip of your best photos.
 
+Publish also covers the print order workflow: add keepers to a print order
+from the Sorter (**O**) or Gallery, get warned if a photo's resolution or
+aspect ratio won't hold up at the requested print size, export a print-ready
+folder or a Markdown/PDF manifest, and stage web-optimized copies for
+TeamSnap, Sprocket, or any team site that takes a folder upload.
+
 ---
 
 ## Features
@@ -83,6 +89,9 @@ and a strip of your best photos.
 | **Smart Albums** | Rule-based albums that update automatically: All Keepers, This Week, B&W Candidates, and more |
 | **Curator notes** | Markdown notes at session level, group level, and a continuous global journal |
 | **Obsidian export** | Export session notes and journal to an Obsidian vault as linked Markdown files with YAML frontmatter |
+| **Print compatibility warnings** | Flags photos whose resolution or aspect ratio won't hold up at a requested print size, before you order prints |
+| **Print orders** | Track a print order from selection through delivery — status lifecycle, Markdown notes, prepare a print-ready folder, export a Markdown/PDF manifest |
+| **Stage for upload** | Export web-optimized copies to a named folder for drag-and-drop upload to TeamSnap, Sprocket, or any team site |
 | **Export / Import** | Move your entire Frame library between Macs with automatic path remapping |
 | **Auto-backup** | Database backed up silently on every launch. 7-day rolling retention. |
 | **Library stats** | Running totals across all sessions: photos, keepers, panoramas, composites |
@@ -134,8 +143,8 @@ and a strip of your best photos.
 | ⌘4 | Edit |
 | ⌘5 | Gallery |
 | ⌘6 | Process |
-| ⌘7 | Journal |
-| ⌘8 | Publish |
+| ⌘7 | Publish |
+| ⌘8 | Journal |
 | ⌘, | Settings |
 
 ### In the Sorter
@@ -144,6 +153,7 @@ and a strip of your best photos.
 |---|---|
 | K | Keep and advance |
 | D | Delete and advance |
+| O | Add to print order |
 | B | Toggle B&W candidate tag |
 | N | Toggle panorama candidate tag |
 | U | Toggle burst candidate tag |
@@ -222,21 +232,27 @@ frame/
 │   ├── preload.js            Context bridge
 │   ├── splash.html           Splash screen (standalone HTML)
 │   └── services/
-│       ├── backupService.js  Shared backup utility
-│       ├── fileSystem.js     Scan, EXIF, copy, trash
-│       ├── imageProcessor.js Thumbnails, rotate, crop
-│       ├── sessionStore.js   SQLite sessions, files, albums, pipeline
-│       ├── toolLauncher.js   Darktable/RawTherapee detection & launch
-│       └── uploadService.js  ArchiVault + iCloud Photos
+│       ├── backupService.js        Shared backup utility
+│       ├── fileSystem.js           Scan, EXIF, copy, trash
+│       ├── imageProcessor.js       Thumbnails, rotate, crop, print export
+│       ├── manifestExport.js       Print order manifest — Markdown + PDF
+│       ├── printCompatibility.js   Resolution + aspect ratio print warnings
+│       ├── sessionStore.js         SQLite sessions, files, albums, pipeline, print orders
+│       ├── toolLauncher.js         Darktable/RawTherapee detection & launch
+│       ├── uploadService.js        ArchiVault + iCloud Photos
+│       └── uploadStagingService.js Web-optimized export presets for team sites
 ├── src/
 │   ├── assets/
 │   │   ├── icons/            Pipeline stage SVG icons
 │   │   └── logo/             Logomark, wordmark, contained variants
 │   ├── components/
-│   │   ├── MarkdownEditor.vue  Shared Markdown editor (view/edit/auto-save)
-│   │   ├── NavIcon.vue         Sidebar navigation icon with CSS filter theming
-│   │   ├── SessionCard.vue     Home screen session card
-│   │   └── EmptyState.vue      Empty state component
+│   │   ├── AddToOrderPopover.vue      Add-to-print-order popover (Sorter + Gallery)
+│   │   ├── EmptyState.vue             Empty state component
+│   │   ├── MarkdownEditor.vue         Shared Markdown editor (view/edit/auto-save)
+│   │   ├── NavIcon.vue                Sidebar navigation icon with CSS filter theming
+│   │   ├── PrintCompatibilityBadge.vue Resolution/aspect ratio status badge
+│   │   ├── PrintSizeSelector.vue      Print size picker, ranked by fit
+│   │   └── SessionCard.vue            Home screen session card
 │   ├── modules/
 │   │   ├── Home/             Session list, pipeline bar, library stats
 │   │   ├── Triage/           Import and time-gap grouping
@@ -245,7 +261,7 @@ frame/
 │   │   ├── Gallery/          Grid, smart albums, image viewer, metadata
 │   │   ├── Process/          External tool handoff (Darktable, Hugin, ffmpeg)
 │   │   ├── Journal/          Global Markdown journal
-│   │   ├── Publish/          ArchiVault + iCloud Photos
+│   │   ├── Publish/          ArchiVault + iCloud Photos, print orders, stage for upload
 │   │   └── Settings/         Tool paths, export/import, backup, Obsidian
 │   └── styles/
 │       └── tokens.css        CSS custom properties (colors, spacing, typography)
@@ -284,12 +300,21 @@ npm run build
 
 ## Roadmap
 
-**v2.2**
-- [ ] Film strip clip fix — top strip bleeds past rounded icon corner ([#17](https://github.com/muftring/frame/issues/17))
-- [ ] Auto-update check at launch — notify when a newer version is available
+**v2.2** ✅ shipped August 2026
+- [x] Film strip clip fix — top strip bleeds past rounded icon corner ([#17](https://github.com/muftring/frame/issues/17))
+- [x] Auto-update check at launch — notify when a newer version is available
 
-**v2.x**
-- [ ] Print lab integration (Mpix, Shutterfly, and others)
+**v2.3** ✅ built and merged, release pending
+- [x] Print compatibility warnings — resolution and aspect ratio checks before ordering prints
+- [x] Print order management — status lifecycle, Markdown notes, three entry points to add photos
+- [x] Prepare print folder — full-resolution export ready for a lab's upload page
+- [x] Print order manifest export — Markdown or PDF shopping list
+- [x] Stage for upload — web-optimized export for TeamSnap, Sprocket, or any team site
+
+**v2.4** — planned, no fixed date
+- [ ] Bay Photo API integration ([#26](https://github.com/muftring/frame/issues/26)) — pending API credentials
+- [ ] Print workflow refinements from v2.3 field use
+- Mpix and Shutterfly: Mpix has no public developer API and is deprioritized; Shutterfly is low priority
 
 **v3.0**
 - [ ] Code signing and notarization (Apple Developer account)
