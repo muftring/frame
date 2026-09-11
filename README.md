@@ -304,7 +304,7 @@ npm run build
 - [x] Film strip clip fix — top strip bleeds past rounded icon corner ([#17](https://github.com/muftring/frame/issues/17))
 - [x] Auto-update check at launch — notify when a newer version is available
 
-**v2.3** ✅ built and merged, release pending
+**v2.3** ✅ shipped September 2026
 - [x] Print compatibility warnings — resolution and aspect ratio checks before ordering prints
 - [x] Print order management — status lifecycle, Markdown notes, three entry points to add photos
 - [x] Prepare print folder — full-resolution export ready for a lab's upload page
