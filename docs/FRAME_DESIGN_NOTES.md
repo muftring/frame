@@ -18,7 +18,7 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v2.2 shipped.** Film strip clip fix (PR #22) + auto-update check (PR #23) + latest.json date fix (PR #24). Tagged and released August 27, 2026 — ahead of the August 31 milestone.
 
-**v2.3.0 built and merged.** V2.3-A through V2.3-E complete: resolution + aspect ratio warnings (PR #35), print order management (PR #37), prepare print folder (PR #38), manifest export (PR #39), stage for upload (PR #40). All five merged to `master`; tag and GitHub Release pending (see Next actions).
+**v2.3.0 ✅ shipped September 11, 2026.** V2.3-A through V2.3-E complete: resolution + aspect ratio warnings (PR #35), print order management (PR #37), prepare print folder (PR #38), manifest export (PR #39), stage for upload (PR #40). Tagged and released — [v2.3.0 on GitHub](https://github.com/muftring/frame/releases/tag/v2.3.0), 4 assets (arm64 + x64 DMG/ZIP) — a couple weeks ahead of the September 30 milestone.
 
 **V2.3-F (Bay Photo API) deferred to v2.4** — pending API credentials from Bay Photo. Issue [#26](https://github.com/muftring/frame/issues/26) moved to the v2.4 milestone. Mpix ([#25](https://github.com/muftring/frame/issues/25)) has no public developer API and is closed/deprioritized indefinitely — not a v2.4 candidate without a business partnership.
 
@@ -26,7 +26,7 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **GitHub milestones:**
 - v2.2 — due August 31, 2026 ✅ shipped Aug 27, 2026
-- v2.3 — due September 30, 2026 (built and merged, tag pending)
+- v2.3 — due September 30, 2026 ✅ shipped Sep 11, 2026
 - v2.4 — Bay Photo API + any print workflow refinements from v2.3 field use (no fixed due date yet)
 - v3.0 — due October 31, 2026
 
@@ -45,8 +45,8 @@ This document is the persistent index of all design decisions, prompts, and arch
 - [x] Prepare print folder (V2.3-C) → v2.3 (PR #38, merged, issue #33 closed)
 - [x] Print order manifest export (V2.3-D) → v2.3 (PR #39, merged, issue #34 closed)
 - [x] Stage for Upload (V2.3-E) → v2.3 (PR #40, merged, issue #29 closed)
-- [ ] Update latest.json to 2.3.0, merge to master
-- [ ] Tag v2.3.0 and cut GitHub Release
+- [x] Update latest.json to 2.3.0, merge to master (PR #41)
+- [x] Tag and release v2.3 → v2.3.0 shipped Sep 11, 2026
 - [ ] Begin blog/paper Part 1 in chat
 - [ ] Obtain Bay Photo professional account + API credentials → v2.4
 - [ ] Run V2.3-F (Bay Photo API) in Claude Code, once credentials arrive → v2.4
@@ -708,7 +708,7 @@ The six prompts below (V2.3-A through V2.3-F) are the detailed breakdown of this
 
 ---
 
-### Print Compatibility Warning System — V2.3-A ✅ *(built and merged — PR [#35](https://github.com/muftring/frame/pull/35), issue [#28](https://github.com/muftring/frame/issues/28) closed — part of v2.3, tag pending)*
+### Print Compatibility Warning System — V2.3-A ✅ *(shipped in v2.3.0 — PR [#35](https://github.com/muftring/frame/pull/35), issue [#28](https://github.com/muftring/frame/issues/28) closed)*
 
 | Prompt | Description |
 |---|---|
@@ -740,7 +740,7 @@ The original prompt's verification checklist stated 16×20 as "warn, ~162 DPI" �
 
 ---
 
-### Print Order Management — V2.3-B ✅ *(built and merged — PR [#37](https://github.com/muftring/frame/pull/37), issue [#32](https://github.com/muftring/frame/issues/32) closed — part of v2.3, tag pending)*
+### Print Order Management — V2.3-B ✅ *(shipped in v2.3.0 — PR [#37](https://github.com/muftring/frame/pull/37), issue [#32](https://github.com/muftring/frame/issues/32) closed)*
 
 | Prompt | Description |
 |---|---|
@@ -770,7 +770,7 @@ printOrder:archive(orderId)
 
 ---
 
-### Prepare Print Folder — V2.3-C ✅ *(built and merged — PR [#38](https://github.com/muftring/frame/pull/38), issue [#33](https://github.com/muftring/frame/issues/33) closed, sub of #32 — part of v2.3, tag pending)*
+### Prepare Print Folder — V2.3-C ✅ *(shipped in v2.3.0 — PR [#38](https://github.com/muftring/frame/pull/38), issue [#33](https://github.com/muftring/frame/issues/33) closed, sub of #32)*
 
 | Prompt | Description |
 |---|---|
@@ -784,7 +784,7 @@ printOrder:archive(orderId)
 
 ---
 
-### Print Order Manifest Export — V2.3-D ✅ *(built and merged — PR [#39](https://github.com/muftring/frame/pull/39), issue [#34](https://github.com/muftring/frame/issues/34) closed, sub of #32 — part of v2.3, tag pending)*
+### Print Order Manifest Export — V2.3-D ✅ *(shipped in v2.3.0 — PR [#39](https://github.com/muftring/frame/pull/39), issue [#34](https://github.com/muftring/frame/issues/34) closed, sub of #32)*
 
 | Prompt | Description |
 |---|---|
@@ -809,7 +809,7 @@ printOrder:archive(orderId)
 
 ---
 
-### Stage for Upload — V2.3-E ✅ *(built and merged — PR [#40](https://github.com/muftring/frame/pull/40), issue [#29](https://github.com/muftring/frame/issues/29) closed — part of v2.3, tag pending)*
+### Stage for Upload — V2.3-E ✅ *(shipped in v2.3.0 — PR [#40](https://github.com/muftring/frame/pull/40), issue [#29](https://github.com/muftring/frame/issues/29) closed)*
 
 | Prompt | Description |
 |---|---|
@@ -1109,7 +1109,7 @@ in Claude Code sessions for traceability.
 | Milestone | Due date | Features |
 |---|---|---|
 | **v2.2** ✅ | August 31, 2026 | Film strip clip fix ([#17](https://github.com/muftring/frame/issues/17)), auto-update check at launch — shipped Aug 27, 2026 |
-| **v2.3** ✅ | September 30, 2026 | Resolution + aspect ratio warnings, Print Order management, Prepare print folder, Manifest export, Stage for upload — all merged, tag pending. Bay Photo API deferred to v2.4. |
+| **v2.3** ✅ | September 30, 2026 | Resolution + aspect ratio warnings, Print Order management, Prepare print folder, Manifest export, Stage for upload — shipped Sep 11, 2026. Bay Photo API deferred to v2.4. |
 | **v2.4** | TBD | Bay Photo API integration ([#26](https://github.com/muftring/frame/issues/26)), print workflow refinements from v2.3 field use. Mpix ([#25](https://github.com/muftring/frame/issues/25)) closed/deprioritized — no public developer API. |
 | **v3.0** | October 31, 2026 | Code signing + notarization, iCloud Photos, relative paths, theme system, snapshots, in-app help |
 
@@ -1151,7 +1151,7 @@ Titles below are the actual issue titles as filed (verified via `gh issue view`)
 | v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
 | v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
 | v2.2.0 | Film strip clip fix (PR #22), auto-update check (PR #23), latest.json date fix (PR #24) | ✅ Shipped |
-| v2.3.0 | Resolution + aspect ratio warnings (#28), Print Order management (#32), Prepare print folder (#33), Manifest export (#34), Stage for upload (#29) | 🔨 Built and merged, tag pending |
+| v2.3.0 | Resolution + aspect ratio warnings (#28), Print Order management (#32), Prepare print folder (#33), Manifest export (#34), Stage for upload (#29) | ✅ Shipped |
 | v2.4.0 | Bay Photo API integration (#26), print workflow refinements from v2.3 field use | 💭 Planned |
 | v3.0 | Code signing + notarization, iCloud Photos, relative paths, themes, snapshots, in-app help | 💭 Planned (due Oct 31) |
 
