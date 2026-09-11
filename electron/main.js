@@ -6,6 +6,7 @@ const fileSystem = require('./services/fileSystem')
 const imageProcessor = require('./services/imageProcessor')
 const toolLauncher = require('./services/toolLauncher')
 const uploadService = require('./services/uploadService')
+const stagingService = require('./services/uploadStagingService')
 const sessionStore = require('./services/sessionStore')
 const sequenceDetector = require('./services/sequenceDetector')
 const backupService = require('./services/backupService')
@@ -525,6 +526,38 @@ ipcMain.handle('printOrder:previewManifest', (_, { orderId }) => {
 
 ipcMain.handle('dialog:showSaveDialog', async (_, options) => {
   return dialog.showSaveDialog(options)
+})
+
+ipcMain.handle('upload:getPresets', () => stagingService.UPLOAD_PRESETS)
+
+ipcMain.handle('upload:stageFiles', async (event, { fileIds, destFolder, presetId }) => {
+  const preset = stagingService.UPLOAD_PRESETS.find(p => p.id === presetId) || stagingService.UPLOAD_PRESETS[0]
+  const files = sessionStore.filesGetKeptByIds(fileIds)
+  if (files.error) return { success: false, error: files.error }
+
+  const result = await stagingService.stageFiles(files, destFolder, preset, (progress) => {
+    event.sender.send('upload:stageProgress', progress)
+  })
+
+  return { success: result.errorCount === 0, ...result }
+})
+
+ipcMain.handle('upload:createFolder', async (_, { parentPath, folderName }) => {
+  const safe = folderName.replace(/[/\\:*?"<>|]/g, '-').trim().slice(0, 80)
+  const fullPath = path.join(parentPath, safe)
+  await fsNode.mkdir(fullPath, { recursive: true })
+  return { success: true, path: fullPath }
+})
+
+ipcMain.handle('upload:revealFolder', async (_, { folderPath }) => {
+  shell.openPath(folderPath)
+  return { success: true }
+})
+
+ipcMain.handle('upload:getStagingRoot', async () => {
+  const store = await getStore()
+  const custom = store.get('upload.stagingRoot', null)
+  return custom || path.join(os.homedir(), 'Pictures', 'Frame Uploads')
 })
 
 ipcMain.handle('tag:listDefinitions', () => sessionStore.tagListDefinitions())

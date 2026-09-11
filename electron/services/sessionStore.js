@@ -767,6 +767,22 @@ function filesListMissingDimensions() {
   }
 }
 
+// Used by upload:stageFiles — only stages files that are still 'kept',
+// even if the renderer's selection is stale (e.g. a file was trashed
+// after being selected but before the user clicked Stage).
+function filesGetKeptByIds(fileIds) {
+  try {
+    if (!Array.isArray(fileIds) || !fileIds.length) return []
+    const db = getDb()
+    const placeholders = fileIds.map(() => '?').join(',')
+    return db.prepare(
+      `SELECT id, filename, full_path FROM files WHERE id IN (${placeholders}) AND status = 'kept'`
+    ).all(...fileIds)
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
 function fileListBySession(sessionId, filters = {}) {
   try {
     const db = getDb()
@@ -1693,6 +1709,7 @@ module.exports = {
   fileUpdatePublished,
   fileListByGroup,
   fileListBySession,
+  filesGetKeptByIds,
   fileGetByPath,
   fileSetRating,
   fileGetById,

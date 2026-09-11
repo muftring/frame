@@ -4,9 +4,16 @@
     <div class="publish-tabs">
       <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">Upload</button>
       <button :class="{ active: activeTab === 'printOrders' }" @click="activeTab = 'printOrders'">Print Orders</button>
+      <button :class="{ active: activeTab === 'uploadStaging' }" @click="activeTab = 'uploadStaging'">Upload staging</button>
     </div>
 
     <PrintOrderPanel v-if="activeTab === 'printOrders'" @navigate="(...args) => $emit('navigate', ...args)" />
+
+    <UploadStagingPanel
+      v-if="activeTab === 'uploadStaging'"
+      ref="stagingPanel"
+      :initial-file-ids="stagingFileIds"
+    />
 
     <template v-if="activeTab === 'upload'">
     <!-- Provider selection -->
@@ -178,15 +185,20 @@
 
 <script>
 import PrintOrderPanel from './PrintOrderPanel.vue'
+import UploadStagingPanel from './UploadStagingPanel.vue'
 
 export default {
   name: 'PublishModule',
-  components: { PrintOrderPanel },
+  components: { PrintOrderPanel, UploadStagingPanel },
   inject: ['toast', 'appSettings', 'session', 'updatePipeline'],
+  props: {
+    initialSource: { type: Object, default: null }
+  },
   emits: ['navigate'],
   data() {
     return {
       activeTab: 'upload',
+      stagingFileIds: [],
       providers: {},
       loadingProviders: true,
       selectedProvider: null,
@@ -218,6 +230,11 @@ export default {
     }
   },
   async mounted() {
+    if (this.initialSource?.type === 'stage-upload') {
+      this.activeTab = 'uploadStaging'
+      this.stagingFileIds = this.initialSource.fileIds || []
+    }
+
     this.providers = await window.api.invoke('upload:getProviders')
     this.loadingProviders = false
 
@@ -241,6 +258,15 @@ export default {
     this.saveSettings()
   },
   methods: {
+    // Ref-based fallback for the case where Publish is already the active
+    // module (so v-else-if never remounts this component and mounted()'s
+    // initialSource check won't re-fire) — see App.vue's stage-upload
+    // navigation handling.
+    openStagingWithFiles(fileIds) {
+      this.activeTab = 'uploadStaging'
+      this.stagingFileIds = fileIds
+      this.$nextTick(() => this.$refs.stagingPanel?.setFiles(fileIds))
+    },
     selectProvider(id) {
       this.selectedProvider = id
       this.uploadDone = false
