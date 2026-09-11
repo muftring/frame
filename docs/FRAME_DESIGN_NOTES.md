@@ -18,11 +18,16 @@ This document is the persistent index of all design decisions, prompts, and arch
 
 **v2.2 shipped.** Film strip clip fix (PR #22) + auto-update check (PR #23) + latest.json date fix (PR #24). Tagged and released August 27, 2026 — ahead of the August 31 milestone.
 
-**v2.3 in progress.** Print order workflow: resolution + aspect ratio warnings, print order management, prepare print folder, manifest export, stage for upload, Bay Photo API. Six prompts (V2.3-A through V2.3-F), all written. V2.3-A built, merged (PR #35), not yet tagged. V2.3-B through V2.3-F not yet run. Due September 30, 2026.
+**v2.3.0 built and merged.** V2.3-A through V2.3-E complete: resolution + aspect ratio warnings (PR #35), print order management (PR #37), prepare print folder (PR #38), manifest export (PR #39), stage for upload (PR #40). All five merged to `master`; tag and GitHub Release pending (see Next actions).
+
+**V2.3-F (Bay Photo API) deferred to v2.4** — pending API credentials from Bay Photo. Issue [#26](https://github.com/muftring/frame/issues/26) moved to the v2.4 milestone. Mpix ([#25](https://github.com/muftring/frame/issues/25)) has no public developer API and is closed/deprioritized indefinitely — not a v2.4 candidate without a business partnership.
+
+**Blog/paper writing begins September 2026.**
 
 **GitHub milestones:**
 - v2.2 — due August 31, 2026 ✅ shipped Aug 27, 2026
-- v2.3 — due September 30, 2026
+- v2.3 — due September 30, 2026 (built and merged, tag pending)
+- v2.4 — Bay Photo API + any print workflow refinements from v2.3 field use (no fixed due date yet)
 - v3.0 — due October 31, 2026
 
 **Next actions:**
@@ -35,15 +40,16 @@ This document is the persistent index of all design decisions, prompts, and arch
 - [x] Auto-update check (V2.2-B) → v2.2 (PR #23)
 - [x] latest.json date fix → v2.2 (PR #24)
 - [x] Tag and release v2.2 → v2.2.0 shipped Aug 27, 2026
-- [x] Resolution + aspect ratio warning system (V2.3-A) → v2.3 (PR #35, merged, not yet tagged)
-- [ ] Run V2.3-B (Print Order management) in Claude Code → v2.3
-- [ ] Run V2.3-C (Prepare print folder) in Claude Code → v2.3
-- [ ] Run V2.3-D (Print order manifest export) in Claude Code → v2.3
-- [ ] Run V2.3-E (Stage for Upload) in Claude Code → v2.3
-- [ ] Bay Photo professional account + API credentials
-- [ ] Run V2.3-F (Bay Photo API) in Claude Code, once credentials arrive → v2.3
-- [ ] Tag and release v2.3
+- [x] Resolution + aspect ratio warning system (V2.3-A) → v2.3 (PR #35, merged, issue #28 closed)
+- [x] Print Order management (V2.3-B) → v2.3 (PR #37, merged, issue #32 closed)
+- [x] Prepare print folder (V2.3-C) → v2.3 (PR #38, merged, issue #33 closed)
+- [x] Print order manifest export (V2.3-D) → v2.3 (PR #39, merged, issue #34 closed)
+- [x] Stage for Upload (V2.3-E) → v2.3 (PR #40, merged, issue #29 closed)
+- [ ] Update latest.json to 2.3.0, merge to master
+- [ ] Tag v2.3.0 and cut GitHub Release
 - [ ] Begin blog/paper Part 1 in chat
+- [ ] Obtain Bay Photo professional account + API credentials → v2.4
+- [ ] Run V2.3-F (Bay Photo API) in Claude Code, once credentials arrive → v2.4
 - [ ] iCloud Photos integration planning → v3.0
 
 ---
@@ -109,6 +115,11 @@ Fragment format:
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-09 | v2.3 shipped as V2.3-A through V2.3-E (no Bay Photo API) — V2.3-F deferred to v2.4 pending Bay Photo credentials. v2.3 is a complete, coherent print workflow without any lab API. | Ship working features; API integration is an enhancement, not a prerequisite |
+| 2026-09 | v2.4 milestone created for Bay Photo API (#26) + Shutterfly (#27) + any print workflow refinements from v2.3 field use. No fixed due date — depends on Bay Photo credential timeline. | Keeps API work tracked without blocking the v2.3 release |
+| 2026-09 | Mpix (#25) closed/deprioritized indefinitely — no public developer API exists, confirmed during V2.3-A research; direct integration only possible via a ShootProof/Pixieset partnership | Not a v2.4 candidate without a business relationship |
+| 2026-09 | Collision-avoidance bug pattern found and fixed in both V2.3-C (`prepareFolder`) and V2.3-E (`stageFiles`): each prompt's own pseudocode checked output filenames against files already on disk, so re-running the same export piled up numbered duplicates instead of overwriting in place. Fixed by scoping collision detection to filenames written during the current run only. | Claude Code owns ground truth on implementation correctness, not just the prompt's literal pseudocode |
+| 2026-09 | Discovered and documented: a Vue-reactive array/object passed directly into `window.api.invoke(...)` throws "An object could not be cloned" (contextBridge can't structured-clone a Proxy) — always spread or `.map()` into a plain array first | Found live during V2.3-E; saved to persistent memory since it's a general Electron/Vue gotcha likely to recur in future IPC calls |
 | 2026-09 | Stage for Upload (#29) made top-level issue separate from Print Lab Integration — applies to TeamSnap, Sprocket, any destination without an API; is its own workflow independent of print ordering | Grouping/sharing feature, not print-specific |
 | 2026-09 | Print Order management (#32) is a first-class Frame feature independent of any lab API — SQLite-backed, living doc with Markdown notes, status lifecycle, manifest export | API integration (Bay Photo) is just one delivery option at the end of the workflow |
 | 2026-09 | Manifest export uses Electron's built-in printToPDF via offscreen BrowserWindow — no additional PDF library needed | Chromium renderer already bundled in Electron; avoids puppeteer/wkhtmltopdf dependency |
@@ -659,7 +670,7 @@ Shown as a dismissible toast, not a modal. Checks once per launch only.
 
 ---
 
-### Print Lab Integration 🔨 *(v2.3 — due Sep 30, tracked in [#20](https://github.com/muftring/frame/issues/20) — all six prompts written, V2.3-A merged)*
+### Print Lab Integration 🔨 *(v2.3 print workflow shipped, V2.3-A–E merged; Bay Photo API deferred to v2.4 — tracked in [#20](https://github.com/muftring/frame/issues/20))*
 
 Send keeper photos directly to a print lab from the Publish module.
 
@@ -693,11 +704,11 @@ Send keeper photos directly to a print lab from the Publish module.
 
 **Stage for Upload** ([#29](https://github.com/muftring/frame/issues/29)) is a separate top-level GitHub issue — not part of print lab integration. Applies to TeamSnap, Sprocket Sports, and any future destination without an API.
 
-The six prompts below (V2.3-A through V2.3-F) are the detailed breakdown of this hybrid-approach scope, one section per shippable unit — same pattern as Film Strip Clip Fix and Auto-Update Check above.
+The six prompts below (V2.3-A through V2.3-F) are the detailed breakdown of this hybrid-approach scope, one section per shippable unit — same pattern as Film Strip Clip Fix and Auto-Update Check above. A–E shipped as v2.3; F is deferred to v2.4 pending Bay Photo credentials (see the "v2.4 — Bay Photo API Integration" section below).
 
 ---
 
-### Print Compatibility Warning System — V2.3-A 🔨 *(built and merged — PR [#35](https://github.com/muftring/frame/pull/35), issue [#28](https://github.com/muftring/frame/issues/28) — not yet tagged)*
+### Print Compatibility Warning System — V2.3-A ✅ *(built and merged — PR [#35](https://github.com/muftring/frame/pull/35), issue [#28](https://github.com/muftring/frame/issues/28) closed — part of v2.3, tag pending)*
 
 | Prompt | Description |
 |---|---|
@@ -729,7 +740,7 @@ The original prompt's verification checklist stated 16×20 as "warn, ~162 DPI" �
 
 ---
 
-### Print Order Management — V2.3-B 📝 *(prompt written, not yet run · issue [#32](https://github.com/muftring/frame/issues/32))*
+### Print Order Management — V2.3-B ✅ *(built and merged — PR [#37](https://github.com/muftring/frame/pull/37), issue [#32](https://github.com/muftring/frame/issues/32) closed — part of v2.3, tag pending)*
 
 | Prompt | Description |
 |---|---|
@@ -759,11 +770,13 @@ printOrder:archive(orderId)
 
 ---
 
-### Prepare Print Folder — V2.3-C 📝 *(prompt written, not yet run · issue [#33](https://github.com/muftring/frame/issues/33), sub of #32)*
+### Prepare Print Folder — V2.3-C ✅ *(built and merged — PR [#38](https://github.com/muftring/frame/pull/38), issue [#33](https://github.com/muftring/frame/issues/33) closed, sub of #32 — part of v2.3, tag pending)*
 
 | Prompt | Description |
 |---|---|
 | V2.3-C | `printOrder:prepareFolder(orderId)` — exports print-ready files to `~/Pictures/Frame Print Orders/[Order Name]/`. Full-resolution JPEG (quality 95, 4:4:4 chroma). Uses cropped file if `crop_applied = true`, otherwise original. Streams progress events. Auto-advances order status to 'ready'. RAW file handling: finds processed JPEG alongside original (Darktable export pattern), skips with clear error if not found. Filename collision resolution. `printOrder:revealFolder` opens folder in Finder. |
+
+**Bug fixed vs. the prompt:** the prompt's own collision-avoidance loop checked output filenames against files already on disk, which meant re-preparing the same order piled up `_2`, `_3`... copies instead of overwriting — contradicting the prompt's own "existing files will be overwritten" spec. Fixed by scoping collision detection to filenames written during the current run only, so unchanged items land on the same path and get overwritten while genuine same-run collisions (one photo added twice at the same size) still get a numbered suffix. Same fix pattern reused proactively in V2.3-E's `stageFiles`.
 
 **Output filename format:** `[original-name]_[W]x[H][_cropped].jpg` — example: `photo_0342_8x10_cropped.jpg`
 
@@ -771,7 +784,7 @@ printOrder:archive(orderId)
 
 ---
 
-### Print Order Manifest Export — V2.3-D 📝 *(prompt written, not yet run · issue [#34](https://github.com/muftring/frame/issues/34), sub of #32)*
+### Print Order Manifest Export — V2.3-D ✅ *(built and merged — PR [#39](https://github.com/muftring/frame/pull/39), issue [#34](https://github.com/muftring/frame/issues/34) closed, sub of #32 — part of v2.3, tag pending)*
 
 | Prompt | Description |
 |---|---|
@@ -796,7 +809,7 @@ printOrder:archive(orderId)
 
 ---
 
-### Stage for Upload — V2.3-E 📝 *(prompt written, not yet run · issue [#29](https://github.com/muftring/frame/issues/29))*
+### Stage for Upload — V2.3-E ✅ *(built and merged — PR [#40](https://github.com/muftring/frame/pull/40), issue [#29](https://github.com/muftring/frame/issues/29) closed — part of v2.3, tag pending)*
 
 | Prompt | Description |
 |---|---|
@@ -814,9 +827,15 @@ printOrder:archive(orderId)
 
 **Distinct from Prepare Print Folder:** print folder = full resolution, print-optimized JPEG. Stage for upload = web-optimized, smaller file size, for team site sharing. Different audiences, different needs.
 
+**Gotcha found and documented:** passing a Vue-reactive array directly into `window.api.invoke(...)` throws `"An object could not be cloned"` — contextBridge's structured-clone can't handle a Proxy, even though the same array works fine everywhere it stays inside Vue. Fix is to spread (`[...this.selectedIds]`) or `.map()` into a plain array first; two spots needed this fix during the V2.3-E build. Saved to Claude Code's persistent memory for future IPC work.
+
+**Scope trim vs. the prompt:** Gallery multi-select ships as cmd/ctrl-click toggle only (no shift-range select) — the entry point the prompt actually needs (select several photos, stage them) without the added surface area of a range-select interaction.
+
 ---
 
-### Bay Photo API Integration — V2.3-F 📝 *(prompt written, not yet run · issue [#26](https://github.com/muftring/frame/issues/26), sub of #20 · prerequisite: Bay Photo professional account + API token)*
+### Bay Photo API Integration — V2.3-F 💭 *(deferred to v2.4 — issue [#26](https://github.com/muftring/frame/issues/26) moved to the v2.4 milestone, sub of #20 · prerequisite: Bay Photo professional account + API token)*
+
+Deferred to v2.4 — pending Bay Photo professional account and API credentials. Mpix ([#25](https://github.com/muftring/frame/issues/25)) has no public developer API; direct integration not achievable without a business partnership. Prompt below is written and ready to run as soon as credentials arrive.
 
 | Prompt | Description |
 |---|---|
@@ -842,6 +861,21 @@ bayPhoto:getProducts()
 bayPhoto:submitOrder(orderId, finish)
 bayPhoto:getOrderStatus(bayOrderId)
 ```
+
+---
+
+## v2.4 — Bay Photo API Integration
+
+**Prerequisite:** Bay Photo professional account + API access token. Action needed: sign up at bayphoto.com, contact Bay Photo to request API credentials. May take 1–2 weeks for approval.
+
+**Scope:**
+- Bay Photo API (V2.3-F prompt already written — see [Bay Photo API Integration — V2.3-F](#bay-photo-api-integration--v23-f) above)
+- Any print workflow refinements that surface from v2.3 field use
+- Shutterfly integration ([#27](https://github.com/muftring/frame/issues/27)) if demand warrants
+
+**Mpix ([#25](https://github.com/muftring/frame/issues/25)):** No public developer API. Integration only possible through a ShootProof/Pixieset partnership. Closed and deprioritized indefinitely unless a business relationship with Mpix becomes available.
+
+**V2.3-F prompt status:** Written and in GitHub issue [#26](https://github.com/muftring/frame/issues/26), moved to the v2.4 milestone. Ready to run as soon as Bay Photo credentials are in hand. Mock mode (`BAY_PHOTO_MOCK=true`) allows full UI testing without credentials.
 
 ---
 
@@ -1075,26 +1109,34 @@ in Claude Code sessions for traceability.
 | Milestone | Due date | Features |
 |---|---|---|
 | **v2.2** ✅ | August 31, 2026 | Film strip clip fix ([#17](https://github.com/muftring/frame/issues/17)), auto-update check at launch — shipped Aug 27, 2026 |
-| **v2.3** 🔨 | September 30, 2026 | Resolution + aspect ratio warnings ([#28](https://github.com/muftring/frame/issues/28), merged), Print Order management ([#32](https://github.com/muftring/frame/issues/32)), Prepare print folder ([#33](https://github.com/muftring/frame/issues/33)), Manifest export ([#34](https://github.com/muftring/frame/issues/34)), Stage for upload ([#29](https://github.com/muftring/frame/issues/29)), Bay Photo API ([#26](https://github.com/muftring/frame/issues/26), pending credentials) |
+| **v2.3** ✅ | September 30, 2026 | Resolution + aspect ratio warnings, Print Order management, Prepare print folder, Manifest export, Stage for upload — all merged, tag pending. Bay Photo API deferred to v2.4. |
+| **v2.4** | TBD | Bay Photo API integration ([#26](https://github.com/muftring/frame/issues/26)), print workflow refinements from v2.3 field use. Mpix ([#25](https://github.com/muftring/frame/issues/25)) closed/deprioritized — no public developer API. |
 | **v3.0** | October 31, 2026 | Code signing + notarization, iCloud Photos, relative paths, theme system, snapshots, in-app help |
 
 See [GitHub Issues](https://github.com/muftring/frame/issues) and [GitHub Milestones](https://github.com/muftring/frame/milestones) for full detail.
 
 ## GitHub Issues — v2.3
 
-Titles below are the actual issue titles as filed (verified via `gh issue view`), not paraphrased. "Status" is the GitHub issue's open/closed state — a still-open issue can have fully-merged code behind it (see #28, merged via PR #35 but left open pending the v2.3.0 tag).
+Titles below are the actual issue titles as filed (verified via `gh issue view`), not paraphrased.
 
 | Issue | Title | Type | Status |
 |---|---|---|---|
-| #20 | Print integration with vendors | Parent | Open |
-| #25 | Mpix integration | Sub of #20 | Open (no public API — low priority) |
+| #20 | Print integration with vendors | Parent | Open (tracking issue for v2.4 Bay Photo/Shutterfly work) |
+| #25 | Mpix integration | Sub of #20 | Closed — no public developer API |
+| #26 | V2.3-F — Bay Photo API Integration | Sub of #20 | Open, moved to v2.4 milestone (pending credentials) |
+| #27 | Shutterfly integration (lower priority) | Sub of #20 | Open, moved to v2.4 milestone (low priority) |
+| #28 | V2.3-A — Resolution + Aspect Ratio Warning System | Top-level | ✅ Closed (merged via PR #35) |
+| #29 | V2.3-E — Stage for Upload | Top-level | ✅ Closed (merged via PR #40) |
+| #32 | V2.3-B — Print Order Management | Top-level | ✅ Closed (merged via PR #37) |
+| #33 | V2.3-C — Prepare print folder | Sub of #32 | ✅ Closed (merged via PR #38) |
+| #34 | V2.3-D — Print Order Manifest export | Sub of #32 | ✅ Closed (merged via PR #39) |
+
+### GitHub Issues — v2.4
+
+| Issue | Title | Type | Status |
+|---|---|---|---|
 | #26 | V2.3-F — Bay Photo API Integration | Sub of #20 | Open (pending credentials) |
 | #27 | Shutterfly integration (lower priority) | Sub of #20 | Open (low priority) |
-| #28 | V2.3-A — Resolution + Aspect Ratio Warning System | Top-level | Open (merged via PR #35, not yet tagged) |
-| #29 | V2.3-E — Stage for Upload | Top-level | Open |
-| #32 | V2.3-B — Print Order Management | Top-level | Open |
-| #33 | V2.3-C — Prepare print folder | Sub of #32 | Open |
-| #34 | V2.3-D — Print Order Manifest export | Sub of #32 | Open |
 
 ## Version History
 
@@ -1109,7 +1151,8 @@ Titles below are the actual issue titles as filed (verified via `gh issue view`)
 | v2.0.0 | Branding A+B + Export/Import + Auto-Backup + Design Notes | ✅ Shipped |
 | v2.1.0 | Curator Notes (session/group/journal) + Obsidian export + dock icon F centering fix | ✅ Shipped |
 | v2.2.0 | Film strip clip fix (PR #22), auto-update check (PR #23), latest.json date fix (PR #24) | ✅ Shipped |
-| v2.3 | Resolution + aspect ratio warnings (V2.3-A, PR #35 merged), Print Order management, prepare print folder, manifest export, stage for upload, Bay Photo API | 🔨 In progress (due Sep 30) |
+| v2.3.0 | Resolution + aspect ratio warnings (#28), Print Order management (#32), Prepare print folder (#33), Manifest export (#34), Stage for upload (#29) | 🔨 Built and merged, tag pending |
+| v2.4.0 | Bay Photo API integration (#26), print workflow refinements from v2.3 field use | 💭 Planned |
 | v3.0 | Code signing + notarization, iCloud Photos, relative paths, themes, snapshots, in-app help | 💭 Planned (due Oct 31) |
 
 ---
